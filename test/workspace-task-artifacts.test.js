@@ -272,6 +272,29 @@ describe("workspace-task-artifacts", () => {
     assert.strictEqual(view.walkthrough, null);
   });
 
+  it("should reject Chinese internal-summary boilerplate in walkthrough artifacts", () => {
+    const root = createTempWorkspace();
+    fs.writeFileSync(path.join(root, ".app_supervisor_state.json"), JSON.stringify({
+      task_summary: "Keep compaction silent",
+      status_line: "Completed",
+      walkthrough_status: "ready",
+      final_walkthrough: true,
+    }), "utf8");
+    fs.writeFileSync(path.join(root, "walkthrough.md"), [
+      "对话总结：",
+      "",
+      "上下文总结仅供内部恢复使用。",
+      "",
+      "之前助手尝试：",
+      "1. Something stale",
+      "",
+    ].join("\n"), "utf8");
+
+    const view = buildWorkspaceTaskView(root);
+    assert.strictEqual(view.mode, "progress");
+    assert.strictEqual(view.walkthrough, null);
+  });
+
   it("should reuse cached task views until artifact signatures change", () => {
     const root = createTempWorkspace();
     const appStatePath = path.join(root, ".app_supervisor_state.json");
@@ -307,5 +330,30 @@ describe("workspace-task-artifacts", () => {
     assert.notStrictEqual(third, second);
     assert.notStrictEqual(third.renderKey, second.renderKey);
     assert.strictEqual(third.progress.overflowCount, 1);
+  });
+
+  it("should invalidate the cached task view when the checkpoint artifact changes", () => {
+    const root = createTempWorkspace();
+    const appStatePath = path.join(root, ".app_supervisor_state.json");
+    const checkpointPath = path.join(root, "CONTEXT_CHECKPOINT.md");
+
+    fs.writeFileSync(appStatePath, JSON.stringify({
+      task_summary: "Keep compaction silent",
+      status_line: "Checkpoint stored internally",
+      walkthrough_status: "pending",
+    }), "utf8");
+    fs.writeFileSync(checkpointPath, "# Context Checkpoint\n\nGoal: Keep compaction silent\n", "utf8");
+
+    const first = buildWorkspaceTaskView(root);
+    const second = buildWorkspaceTaskView(root);
+    assert.strictEqual(first, second);
+
+    fs.writeFileSync(checkpointPath, "# Context Checkpoint\n\nGoal: A different checkpoint\n", "utf8");
+    const nextTime = new Date(Date.now() + 2000);
+    fs.utimesSync(checkpointPath, nextTime, nextTime);
+
+    const third = buildWorkspaceTaskView(root);
+    assert.notStrictEqual(third, second);
+    assert.notStrictEqual(third.renderKey, second.renderKey);
   });
 });

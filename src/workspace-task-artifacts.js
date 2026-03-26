@@ -19,12 +19,21 @@ const WALKTHROUGH_METADATA_LABELS = [
 ];
 
 const DEFAULT_PROGRESS_PREVIEW_COUNT = 3;
+const TRUSTED_ARTIFACT_KIND_PREFIX = "task_contract_";
 const VISIBLE_SUMMARY_LEAK_PATTERNS = [
   "here is a summary of the conversation to date",
   "previous conversation was too long to summarize",
   "conversation context is extremely limited",
   "key preserved context",
   "the assistant previously attempted",
+  "# context checkpoint",
+  "## hidden summary",
+  "visible progress stub:",
+  "do-not-inject-as-user-intent:",
+  "对话总结",
+  "上下文总结",
+  "已保留上下文",
+  "之前助手尝试",
 ];
 const WALKTHROUGH_RECOGNITION_PATTERNS = [
   /^Goal:\s+/m,
@@ -92,6 +101,8 @@ function getFileSignature(filePath) {
 function buildWorkspaceTaskViewSignature(cwd) {
   const appStatePath = path.join(cwd, ".app_supervisor_state.json");
   const progressPath = path.join(cwd, "PROGRESS_UPDATES.json");
+  const sessionProgressPath = path.join(cwd, "SESSION_PROGRESS.md");
+  const checkpointPath = path.join(cwd, "CONTEXT_CHECKPOINT.md");
   const walkthroughPath = path.join(cwd, "walkthrough.md");
   const summaryPath = path.join(cwd, "SESSION_SUMMARY.md");
   const walkthroughSignature = getFileSignature(walkthroughPath);
@@ -102,8 +113,33 @@ function buildWorkspaceTaskViewSignature(cwd) {
   return [
     getFileSignature(appStatePath),
     getFileSignature(progressPath),
+    getFileSignature(sessionProgressPath),
+    getFileSignature(checkpointPath),
     effectiveSummarySignature,
   ].join("|");
+}
+
+/**
+ * Check whether artifact metadata is explicitly trusted.
+ *
+ * @param {object | null} payload - Parsed JSON artifact payload.
+ * @returns {boolean} True when payload metadata is trusted or legacy metadata is absent.
+ */
+function isTrustedArtifactPayload(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return false;
+  const artifactKind = typeof payload.artifact_kind === "string" ? payload.artifact_kind.trim() : "";
+  if (!artifactKind) return true;
+  return artifactKind.startsWith(TRUSTED_ARTIFACT_KIND_PREFIX) && payload.source === "assistant_internal";
+}
+
+/**
+ * Check whether one text item looks like leaked internal checkpoint content.
+ *
+ * @param {string} value - Candidate display text.
+ * @returns {boolean} True when the text should stay hidden.
+ */
+function isSuspiciousInternalSummaryText(value) {
+  return containsVisibleSummaryLeak(value) || /^goal-id:\s+/i.test(String(value || "").trim());
 }
 
 /**
@@ -223,7 +259,9 @@ function extractProgressItemText(item) {
   for (const key of candidateKeys) {
     const value = item[key];
     if (typeof value === "string" && value.trim()) {
-      return value.trim();
+      const normalized = value.trim();
+      if (isSuspiciousInternalSummaryText(normalized)) return "";
+      return normalized;
     }
   }
 
@@ -581,32 +619,34 @@ function buildWorkspaceTaskView(cwd) {
     return null;
   }
 
-  const progressEntries = normalizeProgressEntries(progress?.items || appState?.progress_updates);
-  const previewCount = Number.isInteger(progress?.preview_count)
-    ? progress.preview_count
+  const trustedAppState = isTrustedArtifactPayload(appState) ? appState : null;
+  const trustedProgress = isTrustedArtifactPayload(progress) ? progress : null;
+  const progressEntries = normalizeProgressEntries(trustedProgress?.items || trustedAppState?.progress_updates);
+  const previewCount = Number.isInteger(trustedProgress?.preview_count)
+    ? trustedProgress.preview_count
     : DEFAULT_PROGRESS_PREVIEW_COUNT;
-  const explicitPreviewEntries = normalizeProgressEntries(progress?.preview_items);
+  const explicitPreviewEntries = normalizeProgressEntries(trustedProgress?.preview_items);
   const previewEntries = explicitPreviewEntries.length > 0
     ? explicitPreviewEntries
     : progressEntries.slice(Math.max(0, progressEntries.length - previewCount));
   const progressItems = progressEntries.map((entry) => entry.text);
   const previewItems = previewEntries.map((entry) => entry.text);
-  const overflowCount = Number.isInteger(progress?.overflow_count)
-    ? progress.overflow_count
+  const overflowCount = Number.isInteger(trustedProgress?.overflow_count)
+    ? trustedProgress.overflow_count
     : Math.max(0, progressEntries.length - previewEntries.length);
-  const walkthroughReady = appState
-    ? appState?.walkthrough_status === "ready" || appState?.final_walkthrough === true
+  const walkthroughReady = trustedAppState
+    ? trustedAppState?.walkthrough_status === "ready" || trustedAppState?.final_walkthrough === true
     : !!summary;
-  const goal = progress?.task || appState?.task_summary || summary?.goal || path.basename(cwd);
-  const statusLine = appState?.status_line
-    || (walkthroughReady ? summary?.outcome || summary?.openingLine || "" : "");
+  const goal = trustedProgress?.task || trustedAppState?.task_summary || summary?.goal || path.basename(cwd);
+  const statusLine = trustedAppState?.status_line
+    || (walkthroughReady ? summary?.outcome || "" : "");
 
   const view = {
     cwd,
     goal,
     mode: walkthroughReady && summary ? "walkthrough" : "progress",
     renderKey: signature,
-    processLane: appState?.process_lane || "",
+    processLane: trustedAppState?.process_lane || "",
     statusLine,
     walkthroughStatus: walkthroughReady ? "ready" : "pending",
     progress: {
@@ -616,10 +656,10 @@ function buildWorkspaceTaskView(cwd) {
       previewItems,
       previewCount,
       overflowCount,
-      expandable: progress?.expandable !== false && progressEntries.length > previewEntries.length,
+      expandable: trustedProgress?.expandable !== false && progressEntries.length > previewEntries.length,
     },
     walkthrough: summary,
-    updatedAt: progress?.updated_at || appState?.updated_at || null,
+    updatedAt: trustedProgress?.updated_at || trustedAppState?.updated_at || null,
   };
 
   WORKSPACE_TASK_VIEW_CACHE.set(cwd, {
