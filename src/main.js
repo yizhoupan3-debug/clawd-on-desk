@@ -17,6 +17,7 @@ const {
   resolveSessionTerminalAction,
   resolveTerminalAction,
 } = require("./terminal-launch-utils");
+const { formatCompactRelativeTime } = require("./relative-time");
 
 const isMac = process.platform === "darwin";
 
@@ -1187,12 +1188,8 @@ const STATE_LABEL_KEY = {
 };
 
 function formatElapsed(ms) {
-  const sec = Math.floor(ms / 1000);
-  if (sec < 60) return t("sessionJustNow");
-  const min = Math.floor(sec / 60);
-  if (min < 60) return t("sessionMinAgo").replace("{n}", min);
-  const hr = Math.floor(min / 60);
-  return t("sessionHrAgo").replace("{n}", hr);
+  const now = Date.now();
+  return formatCompactRelativeTime(now - Math.max(0, ms), { now });
 }
 
 function buildSessionSubmenu() {
