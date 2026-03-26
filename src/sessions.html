@@ -913,6 +913,10 @@
     .status-dot.thinking { background: var(--accent); box-shadow: 0 0 8px rgba(88, 166, 255, 0.4); }
     .status-dot.error { background: var(--danger); box-shadow: 0 0 8px rgba(248, 81, 73, 0.4); }
 
+    .workspace-document-host {
+      min-width: 0;
+    }
+
     .workspace-document-panel {
       min-width: 0;
       min-height: 420px;
@@ -2192,6 +2196,11 @@
       activeWorkspaceTreeKey = state.workspaceKey;
       updateWorkspaceTreeFooter(nodeEntry, state);
       renderWorkspaceTreePanel(nodeEntry, state.workspaceKey, state.cwd);
+      const entry = state.entryIndex.get(state.selectedRelativePath);
+      if (entry?.kind === 'file') {
+        const documentState = ensureWorkspaceDocumentState(state.workspaceKey, state.cwd);
+        void openWorkspaceDocument(nodeEntry, documentState, entry.relativePath);
+      }
       if (options.openMenu) {
         const fallbackEvent = {
           clientX: 0,
@@ -2418,10 +2427,8 @@
       if (!normalizedPath) return;
 
       try {
-        await window.sessionsAPI.openWorkspaceEntry({
-          cwd: state.cwd,
-          relativePath: normalizedPath,
-        });
+        const documentState = ensureWorkspaceDocumentState(state.workspaceKey, state.cwd);
+        await openWorkspaceDocument(nodeEntry, documentState, normalizedPath, { force: true });
         state.lastMessage = `Opened ${normalizedPath}`;
         state.lastError = '';
       } catch (error) {
@@ -2453,10 +2460,15 @@
         relativePath: normalizedPath,
         nextName: trimmed,
       });
-      state.selectedRelativePath = normalizeWorkspaceRelativePath(result?.relativePath || joinWorkspaceRelativePath(getWorkspaceParentRelativePath(normalizedPath), trimmed));
+      const nextRelativePath = normalizeWorkspaceRelativePath(result?.relativePath || joinWorkspaceRelativePath(getWorkspaceParentRelativePath(normalizedPath), trimmed));
+      state.selectedRelativePath = nextRelativePath;
       state.lastMessage = `Renamed to ${getWorkspaceEntryName(state.selectedRelativePath)}`;
       state.lastError = '';
       await refreshWorkspaceTreePanel(nodeEntry, state, { keepSelection: true });
+      const documentState = ensureWorkspaceDocumentState(state.workspaceKey, state.cwd);
+      if (documentState.activeRelativePath === normalizedPath) {
+        await openWorkspaceDocument(nodeEntry, documentState, nextRelativePath, { force: true });
+      }
     }
 
     /**
@@ -2479,6 +2491,11 @@
         cwd: state.cwd,
         relativePath: normalizedPath,
       });
+      const documentState = ensureWorkspaceDocumentState(state.workspaceKey, state.cwd);
+      if (documentState.activeRelativePath === normalizedPath) {
+        closeWorkspaceDocument(documentState, `Closed ${normalizedPath}`);
+        renderWorkspaceDocumentPanel(nodeEntry, state.workspaceKey, state.cwd);
+      }
       state.selectedRelativePath = getWorkspaceParentRelativePath(normalizedPath);
       state.lastMessage = `Deleted ${normalizedPath}`;
       state.lastError = '';
@@ -2507,10 +2524,15 @@
         name: trimmed,
         kind,
       });
-      state.selectedRelativePath = normalizeWorkspaceRelativePath(result?.relativePath || joinWorkspaceRelativePath(targetRelativePath, trimmed));
+      const nextRelativePath = normalizeWorkspaceRelativePath(result?.relativePath || joinWorkspaceRelativePath(targetRelativePath, trimmed));
+      state.selectedRelativePath = nextRelativePath;
       state.lastMessage = `Created ${state.selectedRelativePath}`;
       state.lastError = '';
       await refreshWorkspaceTreePanel(nodeEntry, state, { keepSelection: true });
+      if (kind === 'file') {
+        const documentState = ensureWorkspaceDocumentState(state.workspaceKey, state.cwd);
+        await openWorkspaceDocument(nodeEntry, documentState, nextRelativePath, { force: true });
+      }
     }
 
     /**
@@ -3003,6 +3025,13 @@
       const threadPanel = document.createElement('div');
       threadPanel.className = 'workspace-thread-panel';
 
+      const documentPanel = document.createElement('div');
+      documentPanel.className = 'workspace-document-host';
+
+      const activityPanel = document.createElement('div');
+      activityPanel.className = 'workspace-activity-panel';
+
+      threadPanel.append(documentPanel, activityPanel);
       expandedShell.append(treePanel, threadPanel);
       threadsContainer.appendChild(expandedShell);
 
@@ -3017,6 +3046,8 @@
         treeNewFileBtn,
         treeNewFolderBtn,
         treeRefreshBtn,
+        documentPanel,
+        activityPanel,
         threadPanel,
         workspaceNameEl,
         activeBadgeEl,
@@ -3027,6 +3058,7 @@
         threadRenderKey: '',
         progressExpanded: false,
         treeRenderQueued: false,
+        documentUi: null,
         workspaceKey: '',
         cwd: '',
       };
@@ -3698,6 +3730,368 @@
     }
 
     /**
+     * Create one workbench action button with a consistent visual style.
+     *
+     * @param {string} label
+     * @param {() => void | Promise<void>} onClick
+     * @param {{ disabled?: boolean, title?: string, variant?: string, active?: boolean }} [options]
+     * @returns {HTMLButtonElement}
+     */
+    function createWorkspaceDocumentButton(label, onClick, options = {}) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = ['workspace-document-button', options.variant].filter(Boolean).join(' ');
+      if (options.active) {
+        button.classList.add('active');
+      }
+      button.disabled = !!options.disabled;
+      button.textContent = label;
+      if (options.title) button.title = options.title;
+      button.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        if (button.disabled) return;
+        await onClick();
+      });
+      return button;
+    }
+
+    /**
+     * Render the active workspace document panel.
+     *
+     * @param {object} nodeEntry
+     * @param {string} workspaceKey
+     * @param {string} cwd
+     * @returns {void}
+     */
+    function renderWorkspaceDocumentPanel(nodeEntry, workspaceKey, cwd) {
+      if (!nodeEntry?.documentPanel) return;
+      const state = ensureWorkspaceDocumentState(workspaceKey, cwd);
+      state.workspaceKey = workspaceKey;
+      state.cwd = cwd;
+      nodeEntry.documentUi = null;
+
+      const surface = document.createElement('div');
+      surface.className = 'workspace-document-panel';
+
+      if (!cwd) {
+        const empty = document.createElement('div');
+        empty.className = 'workspace-document-empty';
+        empty.textContent = 'No workspace folder is available for the embedded workbench.';
+        surface.appendChild(empty);
+        nodeEntry.documentPanel.replaceChildren(surface);
+        return;
+      }
+
+      if (!state.document && !state.loading && !state.error) {
+        const empty = document.createElement('div');
+        empty.className = 'workspace-document-empty';
+        empty.textContent = DOCUMENT_EMPTY_HINT;
+        surface.appendChild(empty);
+        nodeEntry.documentPanel.replaceChildren(surface);
+        return;
+      }
+
+      const header = document.createElement('div');
+      header.className = 'workspace-document-header';
+
+      const titleWrap = document.createElement('div');
+      titleWrap.className = 'workspace-document-title-wrap';
+
+      const title = document.createElement('div');
+      title.className = 'workspace-document-title';
+
+      const titleName = document.createElement('span');
+      titleName.className = 'workspace-document-title-name';
+      titleName.textContent = state.document?.fileName || state.activeRelativePath || 'Workbench';
+
+      const badge = document.createElement('span');
+      badge.className = 'workspace-document-badge';
+
+      title.append(titleName, badge);
+
+      const pathLabel = document.createElement('div');
+      pathLabel.className = 'workspace-document-path';
+      pathLabel.textContent = state.activeRelativePath || cwd;
+
+      titleWrap.append(title, pathLabel);
+
+      const actions = document.createElement('div');
+      actions.className = 'workspace-document-actions';
+
+      let compileBtn = null;
+      let previewToggleBtn = null;
+      let sourceToggleBtn = null;
+      if (state.document?.mode === 'markdown') {
+        previewToggleBtn = createWorkspaceDocumentButton(
+          state.previewMode === 'preview' ? 'Edit' : 'Preview',
+          () => {
+            state.previewMode = state.previewMode === 'preview' ? 'edit' : 'preview';
+            renderWorkspaceDocumentPanel(nodeEntry, workspaceKey, cwd);
+          },
+          { active: state.previewMode === 'preview' }
+        );
+        actions.appendChild(previewToggleBtn);
+      }
+      if (state.document?.mode === 'tex') {
+        sourceToggleBtn = createWorkspaceDocumentButton('Source', () => {
+          state.previewMode = 'edit';
+          renderWorkspaceDocumentPanel(nodeEntry, workspaceKey, cwd);
+        }, {
+          active: state.previewMode !== 'preview',
+          disabled: state.loading,
+        });
+        previewToggleBtn = createWorkspaceDocumentButton('Preview', () => {
+          if (!state.texCompileResult) return;
+          state.previewMode = 'preview';
+          renderWorkspaceDocumentPanel(nodeEntry, workspaceKey, cwd);
+        }, {
+          active: state.previewMode === 'preview',
+          disabled: !state.texCompileResult,
+        });
+        compileBtn = createWorkspaceDocumentButton('Compile', () => compileWorkspaceDocument(nodeEntry, state), {
+          variant: 'primary',
+          disabled: state.loading || state.saving || state.compiling,
+          title: 'Compile this TeX file into PDF',
+        });
+        actions.append(sourceToggleBtn, previewToggleBtn, compileBtn);
+      }
+
+      const saveBtn = createWorkspaceDocumentButton('Save', () => saveWorkspaceDocument(nodeEntry, state), {
+        variant: 'primary',
+        disabled: !state.document?.isEditable || !state.dirty || state.loading || state.saving,
+      });
+      actions.appendChild(saveBtn);
+
+      header.append(titleWrap, actions);
+      surface.appendChild(header);
+
+      const status = document.createElement('div');
+      status.className = 'workspace-document-status';
+      surface.appendChild(status);
+
+      const body = document.createElement('div');
+      body.className = 'workspace-document-surface';
+      surface.appendChild(body);
+
+      if (state.loading) {
+        const loading = document.createElement('div');
+        loading.className = 'workspace-document-loading';
+        loading.textContent = state.statusMessage || 'Opening document...';
+        body.appendChild(loading);
+      } else if (state.error && !state.document) {
+        const error = document.createElement('div');
+        error.className = 'workspace-document-empty';
+        error.textContent = state.error;
+        body.appendChild(error);
+      } else if (state.document?.mode === 'pdf') {
+        const toolbar = document.createElement('div');
+        toolbar.className = 'workspace-pdf-toolbar';
+
+        const controls = document.createElement('div');
+        controls.className = 'workspace-pdf-controls';
+        const prevBtn = createWorkspaceDocumentButton('‹', () => {
+          state.pdfView.page = Math.max(1, state.pdfView.page - 1);
+          renderWorkspaceDocumentPanel(nodeEntry, workspaceKey, cwd);
+        }, {
+          disabled: state.pdfView.page <= 1,
+        });
+        const pageInput = document.createElement('input');
+        pageInput.className = 'workspace-pdf-page-input';
+        pageInput.type = 'number';
+        pageInput.min = '1';
+        pageInput.value = String(state.pdfView.page || 1);
+        pageInput.addEventListener('change', () => {
+          const nextPage = Math.max(1, Number.parseInt(pageInput.value || '1', 10) || 1);
+          state.pdfView.page = state.pdfView.pageCount ? Math.min(nextPage, state.pdfView.pageCount) : nextPage;
+          renderWorkspaceDocumentPanel(nodeEntry, workspaceKey, cwd);
+        });
+        const pageCount = document.createElement('span');
+        pageCount.className = 'workspace-pdf-count';
+        pageCount.textContent = `/ ${state.document.pdf?.pageCount || '?'}`;
+        const nextBtn = createWorkspaceDocumentButton('›', () => {
+          const maxPage = state.document.pdf?.pageCount || state.pdfView.page + 1;
+          state.pdfView.page = Math.min(maxPage, state.pdfView.page + 1);
+          renderWorkspaceDocumentPanel(nodeEntry, workspaceKey, cwd);
+        }, {
+          disabled: !!state.document.pdf?.pageCount && state.pdfView.page >= state.document.pdf.pageCount,
+        });
+        controls.append(prevBtn, pageInput, pageCount, nextBtn);
+
+        const zoomControls = document.createElement('div');
+        zoomControls.className = 'workspace-pdf-controls';
+        const zoomOut = createWorkspaceDocumentButton('−', () => {
+          const currentIndex = PDF_PRESET_ZOOMS.findIndex((value) => value >= state.pdfView.zoom);
+          const nextIndex = currentIndex <= 0 ? 0 : currentIndex - 1;
+          state.pdfView.zoom = PDF_PRESET_ZOOMS[nextIndex];
+          renderWorkspaceDocumentPanel(nodeEntry, workspaceKey, cwd);
+        });
+        const zoomLabel = document.createElement('span');
+        zoomLabel.className = 'workspace-pdf-zoom';
+        zoomLabel.textContent = `${state.pdfView.zoom}%`;
+        const zoomIn = createWorkspaceDocumentButton('+', () => {
+          const currentIndex = PDF_PRESET_ZOOMS.findIndex((value) => value >= state.pdfView.zoom);
+          const nextIndex = currentIndex === -1 ? PDF_PRESET_ZOOMS.length - 1 : Math.min(PDF_PRESET_ZOOMS.length - 1, currentIndex + 1);
+          state.pdfView.zoom = PDF_PRESET_ZOOMS[nextIndex];
+          renderWorkspaceDocumentPanel(nodeEntry, workspaceKey, cwd);
+        });
+        zoomControls.append(zoomOut, zoomLabel, zoomIn);
+
+        toolbar.append(controls, zoomControls);
+        body.appendChild(toolbar);
+
+        const frame = document.createElement('iframe');
+        frame.className = 'workspace-pdf-frame';
+        frame.src = buildWorkspacePdfViewerUrl(state.document.pdf.fileUrl, state.pdfView);
+        body.appendChild(frame);
+      } else if (state.document?.mode === 'markdown' && state.previewMode === 'preview') {
+        const toolbar = document.createElement('div');
+        toolbar.className = 'workspace-editor-toolbar';
+        const previewHint = document.createElement('div');
+        previewHint.className = 'workspace-document-path';
+        previewHint.textContent = 'Markdown preview';
+        toolbar.appendChild(previewHint);
+        body.appendChild(toolbar);
+
+        const preview = document.createElement('div');
+        preview.className = 'workspace-document-preview';
+        preview.appendChild(buildMarkdownPreviewFragment(state.draftContent));
+        body.appendChild(preview);
+      } else if (state.document?.mode === 'tex' && state.previewMode === 'preview' && state.texCompileResult?.outputFileUrl) {
+        const toolbar = document.createElement('div');
+        toolbar.className = 'workspace-pdf-toolbar';
+
+        const controls = document.createElement('div');
+        controls.className = 'workspace-pdf-controls';
+        const prevBtn = createWorkspaceDocumentButton('‹', () => {
+          state.pdfView.page = Math.max(1, state.pdfView.page - 1);
+          renderWorkspaceDocumentPanel(nodeEntry, workspaceKey, cwd);
+        }, { disabled: state.pdfView.page <= 1 });
+        const pageInput = document.createElement('input');
+        pageInput.className = 'workspace-pdf-page-input';
+        pageInput.type = 'number';
+        pageInput.min = '1';
+        pageInput.value = String(state.pdfView.page || 1);
+        pageInput.addEventListener('change', () => {
+          const nextPage = Math.max(1, Number.parseInt(pageInput.value || '1', 10) || 1);
+          state.pdfView.page = state.pdfView.pageCount ? Math.min(nextPage, state.pdfView.pageCount) : nextPage;
+          renderWorkspaceDocumentPanel(nodeEntry, workspaceKey, cwd);
+        });
+        const pageCount = document.createElement('span');
+        pageCount.className = 'workspace-pdf-count';
+        pageCount.textContent = `/ ${state.pdfView.pageCount || '?'}`;
+        const nextBtn = createWorkspaceDocumentButton('›', () => {
+          const maxPage = state.pdfView.pageCount || state.pdfView.page + 1;
+          state.pdfView.page = Math.min(maxPage, state.pdfView.page + 1);
+          renderWorkspaceDocumentPanel(nodeEntry, workspaceKey, cwd);
+        }, {
+          disabled: !!state.pdfView.pageCount && state.pdfView.page >= state.pdfView.pageCount,
+        });
+        controls.append(prevBtn, pageInput, pageCount, nextBtn);
+        toolbar.appendChild(controls);
+        body.appendChild(toolbar);
+
+        const frame = document.createElement('iframe');
+        frame.className = 'workspace-pdf-frame';
+        frame.src = buildWorkspacePdfViewerUrl(state.texCompileResult.outputFileUrl, state.pdfView);
+        body.appendChild(frame);
+      } else {
+        if (state.document?.mode === 'markdown') {
+          const toolbar = document.createElement('div');
+          toolbar.className = 'workspace-editor-toolbar';
+
+          const formattingGroup = document.createElement('div');
+          formattingGroup.className = 'workspace-editor-toolbar-group';
+          MARKDOWN_TOOLBAR_ITEMS.forEach((item) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'workspace-toolbar-btn';
+            button.title = item.title;
+            button.textContent = item.label;
+            button.addEventListener('click', (event) => {
+              event.stopPropagation();
+              const textarea = nodeEntry.documentUi?.textarea;
+              if (!textarea) return;
+              item.action(textarea);
+            });
+            formattingGroup.appendChild(button);
+          });
+
+          const toggleGroup = document.createElement('div');
+          toggleGroup.className = 'workspace-editor-toolbar-group';
+          const previewButton = document.createElement('button');
+          previewButton.type = 'button';
+          previewButton.className = 'workspace-toolbar-btn';
+          previewButton.title = 'Preview Markdown';
+          previewButton.textContent = '👁';
+          previewButton.addEventListener('click', (event) => {
+            event.stopPropagation();
+            state.previewMode = 'preview';
+            renderWorkspaceDocumentPanel(nodeEntry, workspaceKey, cwd);
+          });
+          toggleGroup.appendChild(previewButton);
+
+          toolbar.append(formattingGroup, toggleGroup);
+          body.appendChild(toolbar);
+        }
+
+        const shell = document.createElement('div');
+        shell.className = 'workspace-editor-shell';
+        const gutter = document.createElement('div');
+        gutter.className = 'workspace-editor-gutter';
+        gutter.hidden = !shouldShowDocumentLineNumbers(state.document);
+        const textarea = document.createElement('textarea');
+        textarea.className = 'workspace-editor-textarea';
+        if (state.document?.mode === 'markdown') {
+          textarea.classList.add('markdown-mode');
+        }
+        textarea.spellcheck = state.document?.mode === 'markdown';
+        textarea.value = state.draftContent;
+        textarea.addEventListener('input', () => handleWorkspaceEditorInput(nodeEntry, state, textarea, gutter));
+        textarea.addEventListener('scroll', () => {
+          gutter.scrollTop = textarea.scrollTop;
+        });
+        textarea.addEventListener('keydown', (event) => {
+          const isMeta = event.metaKey || event.ctrlKey;
+          if (isMeta && event.key.toLowerCase() === 's') {
+            event.preventDefault();
+            void saveWorkspaceDocument(nodeEntry, state);
+          }
+        });
+        syncWorkspaceEditorGutter(gutter, state.draftContent);
+        shell.append(gutter, textarea);
+        body.appendChild(shell);
+
+        nodeEntry.documentUi = {
+          badgeEl: badge,
+          statusEl: status,
+          saveBtn,
+          compileBtn,
+          textarea,
+          gutterEl: gutter,
+        };
+      }
+
+      if (!nodeEntry.documentUi) {
+        nodeEntry.documentUi = {
+          badgeEl: badge,
+          statusEl: status,
+          saveBtn,
+          compileBtn,
+        };
+      }
+
+      if (state.document?.mode === 'tex' && state.texCompileResult?.logs) {
+        const compileLog = document.createElement('pre');
+        compileLog.className = 'workspace-compile-log';
+        compileLog.textContent = state.texCompileResult.logs.split('\n').slice(-20).join('\n');
+        surface.appendChild(compileLog);
+      }
+
+      nodeEntry.documentPanel.replaceChildren(surface);
+      refreshWorkspaceDocumentUiState(nodeEntry, state);
+    }
+
+    /**
      * Find one cached explorer entry by its relative path.
      *
      * @param {{ entriesByPath: Map<string, Array<object>> }} state
@@ -3800,6 +4194,7 @@
       if (nodeEntry.threadRenderKey === nextThreadKey) return;
 
       nodeEntry.threadRenderKey = nextThreadKey;
+      const targetPanel = nodeEntry.activityPanel || nodeEntry.threadPanel;
       const fragment = document.createDocumentFragment();
 
       if (taskView) {
@@ -3811,7 +4206,7 @@
         empty.style.cssText = 'padding: 12px 14px; font-size: 11px; color: var(--text-dim); font-style: italic;';
         empty.textContent = taskView ? 'No active threads in this workspace.' : 'No active threads in this workspace.';
         fragment.appendChild(empty);
-        nodeEntry.threadPanel.replaceChildren(fragment);
+        targetPanel.replaceChildren(fragment);
         return;
       }
 
@@ -3849,7 +4244,7 @@
         fragment.appendChild(threadItem);
       });
 
-      nodeEntry.threadPanel.replaceChildren(fragment);
+      targetPanel.replaceChildren(fragment);
     }
 
     /**
@@ -3989,6 +4384,7 @@
         };
 
         renderWorkspaceThreads(nodeEntry, workspaceKey, cwd, threads, cwd ? workspaceTaskViews[cwd] : null);
+        renderWorkspaceDocumentPanel(nodeEntry, workspaceKey, cwd || '');
         renderWorkspaceTreePanel(nodeEntry, workspaceKey, cwd || '', { deferLoad: workspaceKey !== expandedWorkspaceCwd });
 
         nodeEntry.row.onclick = () => {
