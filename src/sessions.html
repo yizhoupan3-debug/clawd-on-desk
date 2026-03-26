@@ -78,34 +78,44 @@
     }
 
     .workspace-row {
-      padding: 10px 16px;
+      min-height: 44px;
+      margin: 0 10px 6px;
+      padding: 0 12px 0 10px;
+      border-radius: 12px;
       cursor: pointer;
       display: flex;
       align-items: center;
-      transition: all 0.2s ease;
+      gap: 10px;
+      transition: background 0.2s ease, color 0.2s ease;
       position: relative;
     }
 
-    .workspace-row:hover {
+    .workspace-row:hover,
+    .workspace-row.expanded {
       background: var(--hover);
     }
 
+    .workspace-row.active-ws {
+      background: rgba(88, 166, 255, 0.08);
+    }
+
+    .workspace-row.active-ws:hover,
+    .workspace-row.active-ws.expanded {
+      background: rgba(88, 166, 255, 0.14);
+    }
+
     .folder-icon {
-      width: 16px;
-      height: 16px;
-      margin-right: 10px;
+      width: 18px;
+      height: 18px;
       display: flex;
       align-items: center;
       justify-content: center;
-      transition: all 0.2s ease;
-      color: var(--accent);
+      flex-shrink: 0;
+      transition: color 0.2s ease;
+      color: var(--text-dim);
     }
 
-    /* Transition folder to arrow on hover */
-    .workspace-row:hover .folder-icon svg .folder-path {
-      display: none;
-    }
-    .workspace-row:hover .folder-icon svg .arrow-path {
+    .folder-icon svg {
       display: block;
     }
 
@@ -118,57 +128,86 @@
       opacity: 0;
     }
 
-    .workspace-row:hover .folder-icon .folder-path {
+    .workspace-row:hover .folder-icon,
+    .workspace-row.expanded .folder-icon {
+      color: var(--text);
+    }
+
+    .workspace-row:hover .folder-icon .folder-path,
+    .workspace-row.expanded .folder-icon .folder-path {
       display: none;
     }
-    .workspace-row:hover .folder-icon .arrow-path {
+
+    .workspace-row:hover .folder-icon .arrow-path,
+    .workspace-row.expanded .folder-icon .arrow-path {
       display: block;
       opacity: 1;
     }
 
     .workspace-name {
       flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: center;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
       font-weight: 500;
       font-size: 14px;
+      line-height: 1.2;
     }
 
     .actions {
       display: flex;
       gap: 8px;
+      margin-left: auto;
+      flex-shrink: 0;
       opacity: 0;
       transition: opacity 0.2s ease;
+      pointer-events: none;
     }
 
-    .workspace-row:hover .actions {
+    .workspace-row:hover .actions,
+    .workspace-row.expanded .actions {
       opacity: 1;
+      pointer-events: auto;
     }
 
     .action-btn {
-      width: 26px;
-      height: 26px;
-      border-radius: 6px;
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
       display: flex;
       align-items: center;
       justify-content: center;
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.1);
+      background: transparent;
+      border: none;
+      padding: 0;
       color: var(--text-dim);
-      transition: all 0.2s ease;
+      cursor: pointer;
+      transition: background 0.2s ease, color 0.2s ease;
+      appearance: none;
     }
 
     .action-btn:hover {
-      background: var(--accent);
-      color: white;
-      border-color: var(--accent);
-      transform: translateY(-1px);
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
     }
 
-    .action-btn.close:hover {
-      background: var(--danger);
-      border-color: var(--danger);
+    .action-btn:focus-visible,
+    .workspace-row:focus-visible {
+      outline: 2px solid rgba(88, 166, 255, 0.7);
+      outline-offset: 2px;
+    }
+
+    .action-btn.delete:hover {
+      background: rgba(248, 81, 73, 0.16);
+      color: #ff9b95;
+    }
+
+    .action-btn.process:hover {
+      background: rgba(88, 166, 255, 0.16);
+      color: #9bc9ff;
     }
 
     .threads-container {
@@ -179,8 +218,297 @@
     }
 
     .threads-container.expanded {
-      max-height: 1000px;
+      max-height: 2800px;
       border-bottom: 1px solid var(--border);
+    }
+
+    .workspace-expanded-shell {
+      display: grid;
+      grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+      gap: 12px;
+      padding: 12px 12px 14px 42px;
+      align-items: start;
+    }
+
+    .workspace-tree-panel {
+      min-width: 0;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      background: rgba(0,0,0,0.18);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+    }
+
+    .workspace-tree-toolbar {
+      display: flex;
+      gap: 8px;
+      padding: 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      background: rgba(255,255,255,0.02);
+    }
+
+    .workspace-tree-toolbar-button {
+      flex: 1;
+      min-width: 0;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.04);
+      color: rgba(224,224,224,0.92);
+      border-radius: 10px;
+      padding: 7px 10px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.18s ease;
+    }
+
+    .workspace-tree-toolbar-button:hover {
+      background: rgba(88, 166, 255, 0.16);
+      border-color: rgba(88, 166, 255, 0.28);
+      color: #fff;
+    }
+
+    .workspace-tree-toolbar-button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .workspace-tree-viewport {
+      max-height: 380px;
+      overflow: auto;
+      padding: 8px;
+    }
+
+    .workspace-tree-viewport::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    .workspace-tree-viewport::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.18);
+      border-radius: 2px;
+    }
+
+    .workspace-tree-root {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .workspace-tree-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 8px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.16s ease, color 0.16s ease;
+      color: rgba(224,224,224,0.86);
+    }
+
+    .workspace-tree-item:hover {
+      background: var(--hover);
+      color: var(--text);
+    }
+
+    .workspace-tree-item.selected {
+      background: rgba(88, 166, 255, 0.15);
+      color: #fff;
+    }
+
+    .workspace-tree-item.is-directory .workspace-tree-item-name {
+      font-weight: 700;
+    }
+
+    .workspace-tree-disclosure {
+      width: 16px;
+      min-width: 16px;
+      height: 16px;
+      border: 0;
+      background: transparent;
+      color: rgba(224,224,224,0.6);
+      border-radius: 4px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      flex: 0 0 auto;
+    }
+
+    .workspace-tree-disclosure:hover {
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+    }
+
+    .workspace-tree-disclosure.is-hidden {
+      visibility: hidden;
+    }
+
+    .workspace-tree-item-icon {
+      width: 14px;
+      min-width: 14px;
+      height: 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: rgba(88, 166, 255, 0.96);
+      flex: 0 0 auto;
+    }
+
+    .workspace-tree-item-icon svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    .workspace-tree-item-name {
+      flex: 1;
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .workspace-tree-item-meta {
+      flex: 0 0 auto;
+      font-size: 10px;
+      opacity: 0.54;
+    }
+
+    .workspace-tree-children {
+      margin-left: 14px;
+      padding-left: 8px;
+      border-left: 1px dashed rgba(255,255,255,0.08);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .workspace-tree-empty {
+      padding: 12px 10px;
+      color: var(--text-dim);
+      font-style: italic;
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    .workspace-tree-footer {
+      padding: 8px 10px 10px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      font-size: 10px;
+      line-height: 1.4;
+      color: rgba(224,224,224,0.55);
+      min-height: 30px;
+    }
+
+    .workspace-tree-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .workspace-tree-status code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.9);
+    }
+
+    .workspace-thread-panel {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .workspace-thread-panel .task-card {
+      margin: 0;
+    }
+
+    .workspace-thread-panel .task-card-hero {
+      padding: 14px 14px 12px;
+    }
+
+    .workspace-thread-panel .task-section {
+      padding: 12px 14px;
+    }
+
+    .workspace-thread-panel .thread-item {
+      padding-left: 14px;
+    }
+
+    .workspace-context-menu {
+      position: fixed;
+      z-index: 2000;
+      min-width: 220px;
+      padding: 6px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.09);
+      background: rgba(20, 20, 20, 0.98);
+      box-shadow: 0 18px 42px rgba(0,0,0,0.38);
+      backdrop-filter: blur(20px);
+    }
+
+    .workspace-context-menu[hidden] {
+      display: none;
+    }
+
+    .workspace-context-menu-item {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 10px;
+      border: 0;
+      border-radius: 10px;
+      background: transparent;
+      color: rgba(224,224,224,0.96);
+      font-size: 11px;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .workspace-context-menu-item:hover {
+      background: rgba(88, 166, 255, 0.14);
+    }
+
+    .workspace-context-menu-item:disabled {
+      opacity: 0.38;
+      cursor: not-allowed;
+    }
+
+    .workspace-context-menu-label {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .workspace-context-menu-shortcut {
+      flex: 0 0 auto;
+      color: rgba(224,224,224,0.5);
+      font-size: 10px;
+      white-space: nowrap;
+    }
+
+    .workspace-tree-rename-input {
+      width: 100%;
+      border: 1px solid rgba(88, 166, 255, 0.35);
+      border-radius: 8px;
+      background: rgba(10, 12, 14, 0.96);
+      color: var(--text);
+      font: inherit;
+      padding: 4px 8px;
+      outline: none;
+    }
+
+    @media (max-width: 940px) {
+      .workspace-expanded-shell {
+        grid-template-columns: minmax(0, 1fr);
+      }
     }
 
     .task-card {
@@ -612,6 +940,7 @@
     let lastRenderKey = '';
     let renderQueued = false;
     let workspaceNodeMap = new Map();
+    let activeWorkspaceTreeKey = null;
     const UNASSIGNED_WORKSPACE_KEY = '__clawd_unassigned__';
     const WORKSPACE_ICON = `
       <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
@@ -619,14 +948,21 @@
         <path class="arrow-path" d="M4.47 6.22a.75.75 0 0 1 1.06 0L8 8.69l2.47-2.47a.75.75 0 1 1 1.06 1.06l-3 3a.75.75 0 0 1-1.06 0l-3-3a.75.75 0 0 1 0-1.06Z"/>
       </svg>
     `;
-    const CLOSE_ICON = `<svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M14.53 15.59a.75.75 0 0 1-1.06 0L8 10.12 2.53 15.59a.75.75 0 1 1-1.06-1.06L6.94 9.06 1.47 3.59a.75.75 0 0 1 1.06-1.06L8 8 13.47 2.53a.75.75 0 0 1 1.06 1.06L9.06 9.06l5.47 5.47a.75.75 0 0 1 0 1.06Z"/></svg>`;
-    const NEW_THREAD_ICON = `<svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M7.75 2a.75.75 0 0 1 .75.75V7h4.25a.75.75 0 0 1 0 1.5H8.5v4.25a.75.75 0 0 1-1.5 0V8.5H2.75a.75.75 0 0 1 0-1.5H7V2.75A.75.75 0 0 1 7.75 2Z"/></svg>`;
+    const DELETE_WORKSPACE_ICON = `<svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M6.75 1.5h2.5c.69 0 1.25.56 1.25 1.25V3h2a.75.75 0 0 1 0 1.5h-.56l-.61 8.01A1.75 1.75 0 0 1 9.58 14H6.42a1.75 1.75 0 0 1-1.74-1.49L4.06 4.5H3.5a.75.75 0 0 1 0-1.5h2v-.25c0-.69.56-1.25 1.25-1.25Zm2.25 1.5h-2V3h2v-.01Zm-2.57 9.38a.75.75 0 0 0 1.5-.1l-.35-5.25a.75.75 0 1 0-1.5.1l.35 5.25Zm3.49-.1a.75.75 0 0 0 1.5.1l.35-5.25a.75.75 0 1 0-1.5-.1l-.35 5.25Z"/></svg>`;
+    const CREATE_PROCESS_ICON = `<svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M3.75 1A1.75 1.75 0 0 0 2 2.75v9.5C2 13.216 2.784 14 3.75 14h8.5A1.75 1.75 0 0 0 14 12.25v-3.5a.75.75 0 0 0-1.5 0v3.5a.25.25 0 0 1-.25.25h-8.5a.25.25 0 0 1-.25-.25v-9.5a.25.25 0 0 1 .25-.25h3.5a.75.75 0 0 0 0-1.5h-3.5ZM10.5 1.75a.75.75 0 0 1 1.5 0V4h2.25a.75.75 0 0 1 0 1.5H12v2.25a.75.75 0 0 1-1.5 0V5.5H8.25a.75.75 0 0 1 0-1.5h2.25V1.75Z"/></svg>`;
     
     const AGENT_ICONS = {
       claude: `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0ZM4.5 5.5a1 1 0 1 1 2 0 1 1 0 0 1-2 0ZM7.5 5.5a1 1 0 1 1 2 0 1 1 0 0 1-2 0ZM11.5 5.5a1 1 0 1 1 2 0 1 1 0 0 1-2 0ZM8 12a4 4 0 0 1-3.5-2h7A4 4 0 0 1 8 12Z"/></svg>`,
       codex: `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M0 2.75C0 1.784.784 1 1.75 1h12.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0 1 14.25 15H1.75A1.75 1.75 0 0 1 0 13.25V2.75Zm1.75-.25a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V2.75a.25.25 0 0 0-.25-.25H1.75ZM7.25 8h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1 0-1.5ZM6 4.75A.75.75 0 0 1 6.75 4h2.5a.75.75 0 0 1 0 1.5h-2.5A.75.75 0 0 1 6 4.75Z"/></svg>`,
       default: `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm2 1H6a3 3 0 0 0-3 3v1h10v-1a3 3 0 0 0-3-3Z"/></svg>`
     };
+    const WORKSPACE_TREE_FOLDER_ICON = `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M1.75 2A1.75 1.75 0 0 0 0 3.75v8.5C0 13.216.784 14 1.75 14h12.5A1.75 1.75 0 0 0 16 12.25v-6.5A1.75 1.75 0 0 0 14.25 4h-6.5l-1.5-2H1.75Z"/></svg>`;
+    const WORKSPACE_TREE_FILE_ICON = `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M3.75 1A1.75 1.75 0 0 0 2 2.75v10.5C2 14.216 2.784 15 3.75 15h8.5A1.75 1.75 0 0 0 14 13.25V5.56a1.75 1.75 0 0 0-.513-1.237L10.677 1.513A1.75 1.75 0 0 0 9.44 1H3.75Zm5.5 1.06 2.62 2.62h-2.62V2.06Z"/></svg>`;
+    const WORKSPACE_TREE_EXPANDED_ICON = '▾';
+    const WORKSPACE_TREE_COLLAPSED_ICON = '▸';
+    const WORKSPACE_TREE_STATE = new Map();
+    let workspaceTreeMenuEl = null;
+    let workspaceTreeMenuCloseHandler = null;
 
     /**
      * Normalize the IPC payload into the renderer shape.
@@ -686,6 +1022,7 @@
       workspaceNodeMap.forEach(({ row, threadsContainer }, cwd) => {
         const isExpanded = cwd === expandedWorkspaceCwd;
         row.classList.toggle('expanded', isExpanded);
+        row.setAttribute('aria-expanded', String(isExpanded));
         threadsContainer.classList.toggle('expanded', isExpanded);
       });
     }
@@ -702,7 +1039,27 @@
       if (options.manual) {
         shouldAutoExpandWorkspace = false;
       }
+      if (nextCwd) {
+        activeWorkspaceTreeKey = nextCwd;
+      }
       applyExpandedWorkspaceState();
+      if (nextCwd) {
+        const nodeEntry = workspaceNodeMap.get(nextCwd);
+        if (nodeEntry) {
+          renderWorkspaceTreePanel(nodeEntry, nextCwd, nodeEntry.cwd || '', { deferLoad: false });
+        }
+      }
+    }
+
+    /**
+     * Toggle one workspace row from pointer or keyboard input.
+     *
+     * @param {string} workspaceKey
+     * @returns {void}
+     */
+    function toggleWorkspaceExpansion(workspaceKey) {
+      const wasExpanded = expandedWorkspaceCwd === workspaceKey;
+      setExpandedWorkspace(wasExpanded ? null : workspaceKey, { manual: true });
     }
 
     /**
@@ -725,15 +1082,940 @@
      * @param {string} title
      * @param {string} iconMarkup
      * @param {string} [className]
-     * @returns {HTMLDivElement}
+     * @returns {HTMLButtonElement}
      */
     function createActionButton(title, iconMarkup, className = '') {
-      const button = document.createElement('div');
+      const button = document.createElement('button');
+      button.type = 'button';
       button.className = ['action-btn', className].filter(Boolean).join(' ');
       button.title = title;
+      button.setAttribute('aria-label', title);
       button.innerHTML = iconMarkup;
       return button;
     }
+
+    /**
+     * Normalize one workspace-relative path for tree state.
+     *
+     * @param {string | null | undefined} value
+     * @returns {string}
+     */
+    function normalizeWorkspaceRelativePath(value) {
+      const raw = String(value || '').trim().replace(/\\/g, '/');
+      if (!raw || raw === '.') return '';
+
+      const parts = [];
+      raw.split('/').forEach((segment) => {
+        const trimmed = segment.trim();
+        if (!trimmed || trimmed === '.') return;
+        if (trimmed === '..') {
+          parts.pop();
+          return;
+        }
+        parts.push(trimmed);
+      });
+
+      return parts.join('/');
+    }
+
+    /**
+     * Return the basename for a normalized workspace-relative path.
+     *
+     * @param {string | null | undefined} value
+     * @returns {string}
+     */
+    function getWorkspaceEntryName(value) {
+      const normalized = normalizeWorkspaceRelativePath(value);
+      if (!normalized) return '';
+      const segments = normalized.split('/');
+      return segments[segments.length - 1] || '';
+    }
+
+    /**
+     * Return the parent folder for a normalized workspace-relative path.
+     *
+     * @param {string | null | undefined} value
+     * @returns {string}
+     */
+    function getWorkspaceParentRelativePath(value) {
+      const normalized = normalizeWorkspaceRelativePath(value);
+      if (!normalized) return '';
+      const segments = normalized.split('/');
+      segments.pop();
+      return segments.join('/');
+    }
+
+    /**
+     * Join one parent path with a child entry name.
+     *
+     * @param {string | null | undefined} parentRelativePath
+     * @param {string} entryName
+     * @returns {string}
+     */
+    function joinWorkspaceRelativePath(parentRelativePath, entryName) {
+      const parent = normalizeWorkspaceRelativePath(parentRelativePath);
+      const name = String(entryName || '').trim().replace(/\\/g, '/');
+      return parent ? `${parent}/${name}` : name;
+    }
+
+    /**
+     * Create one tree state bucket for a workspace.
+     *
+     * @param {string} workspaceKey
+     * @param {string} cwd
+     * @returns {object}
+     */
+    function createWorkspaceTreeState(workspaceKey, cwd) {
+      return {
+        workspaceKey,
+        cwd,
+        selectedRelativePath: '',
+        expandedPaths: new Set(['']),
+        directoryCache: new Map(),
+        entryIndex: new Map(),
+        loadingPaths: new Set(),
+        loadTokens: new Map(),
+        lastMessage: '',
+        lastError: '',
+        clipboardState: null,
+        renderToken: 0,
+      };
+    }
+
+    /**
+     * Resolve or create one tree state bucket for a workspace.
+     *
+     * @param {string} workspaceKey
+     * @param {string} cwd
+     * @returns {object}
+     */
+    function ensureWorkspaceTreeState(workspaceKey, cwd) {
+      const nextCwd = typeof cwd === 'string' ? cwd : '';
+      const state = WORKSPACE_TREE_STATE.get(workspaceKey) || createWorkspaceTreeState(workspaceKey, nextCwd);
+      state.cwd = nextCwd;
+      WORKSPACE_TREE_STATE.set(workspaceKey, state);
+      return state;
+    }
+
+    /**
+     * Clear loaded directory data while preserving selection and expansion.
+     *
+     * @param {object} state
+     * @returns {void}
+     */
+    function resetWorkspaceTreeState(state) {
+      state.directoryCache.clear();
+      state.entryIndex.clear();
+      state.loadingPaths.clear();
+      state.loadTokens.clear();
+      state.lastError = '';
+      state.lastMessage = 'Refreshing workspace tree...';
+      state.renderToken += 1;
+    }
+
+    /**
+     * Return the current selected entry and its parent target.
+     *
+     * @param {object} state
+     * @returns {{ relativePath: string | null, kind: string | null, parentRelativePath: string }}
+     */
+    function getWorkspaceTreeSelection(state) {
+      const relativePath = normalizeWorkspaceRelativePath(state.selectedRelativePath);
+      if (!relativePath) {
+        return { relativePath: null, kind: null, parentRelativePath: '' };
+      }
+
+      const entry = state.entryIndex.get(relativePath) || null;
+      return {
+        relativePath,
+        kind: entry?.kind || null,
+        parentRelativePath: entry?.kind === 'directory' ? relativePath : getWorkspaceParentRelativePath(relativePath),
+      };
+    }
+
+    /**
+     * Return the best paste target for the current selection.
+     *
+     * @param {object} state
+     * @returns {string}
+     */
+    function resolveWorkspaceTreePasteTarget(state) {
+      const selection = getWorkspaceTreeSelection(state);
+      if (selection.relativePath && selection.kind === 'directory') {
+        return selection.relativePath;
+      }
+      return selection.parentRelativePath || '';
+    }
+
+    /**
+     * Update the visible footer for one workspace tree.
+     *
+     * @param {object} nodeEntry
+     * @param {object} state
+     * @returns {void}
+     */
+    function updateWorkspaceTreeFooter(nodeEntry, state) {
+      if (!nodeEntry?.treeFooterEl) return;
+
+      const clipboardLabel = state.clipboardState?.hasItem
+        ? `${state.clipboardState.mode === 'cut' ? 'Cut' : 'Copy'} ${state.clipboardState.name || state.clipboardState.relativePath || ''}`.trim()
+        : 'Clipboard empty';
+
+      const selection = getWorkspaceTreeSelection(state);
+      const selectionLabel = selection.relativePath
+        ? `${selection.kind === 'directory' ? 'Folder' : 'File'}: ${selection.relativePath}`
+        : 'Workspace root';
+
+      const parts = [clipboardLabel, selectionLabel];
+      if (state.lastError) parts.push(`Error: ${state.lastError}`);
+      else if (state.lastMessage) parts.push(state.lastMessage);
+
+      nodeEntry.treeFooterEl.innerHTML = '';
+      const status = document.createElement('div');
+      status.className = 'workspace-tree-status';
+      parts.forEach((part) => {
+        const span = document.createElement('span');
+        if (part.startsWith('Error: ')) {
+          span.style.color = '#ff8a8a';
+        }
+        span.textContent = part;
+        status.appendChild(span);
+      });
+      nodeEntry.treeFooterEl.appendChild(status);
+    }
+
+    /**
+     * Request the current clipboard metadata from the host.
+     *
+     * @param {object} nodeEntry
+     * @param {object} state
+     * @returns {Promise<void>}
+     */
+    async function syncWorkspaceTreeClipboardState(nodeEntry, state) {
+      try {
+        state.clipboardState = await window.sessionsAPI.getWorkspaceClipboard();
+      } catch (error) {
+        state.clipboardState = null;
+        state.lastError = error?.message || String(error);
+      }
+      updateWorkspaceTreeFooter(nodeEntry, state);
+    }
+
+    /**
+     * Convert one API entry into tree state metadata.
+     *
+     * @param {string} parentRelativePath
+     * @param {object} entry
+     * @returns {{ name: string, relativePath: string, absolutePath: string, kind: string }}
+     */
+    function normalizeWorkspaceTreeEntry(parentRelativePath, entry) {
+      const relativePath = normalizeWorkspaceRelativePath(entry?.relativePath || joinWorkspaceRelativePath(parentRelativePath, entry?.name || ''));
+      const absolutePath = typeof entry?.absolutePath === 'string'
+        ? entry.absolutePath
+        : '';
+      return {
+        name: String(entry?.name || getWorkspaceEntryName(relativePath)),
+        relativePath,
+        absolutePath,
+        kind: entry?.kind === 'directory' ? 'directory' : 'file',
+      };
+    }
+
+    /**
+     * Store one directory listing in the tree cache.
+     *
+     * @param {object} state
+     * @param {string} relativePath
+     * @param {Array<object>} entries
+     * @returns {void}
+     */
+    function storeWorkspaceTreeDirectory(state, relativePath, entries) {
+      const normalizedPath = normalizeWorkspaceRelativePath(relativePath);
+      const normalizedEntries = entries.map((entry) => normalizeWorkspaceTreeEntry(normalizedPath, entry));
+      state.directoryCache.set(normalizedPath, {
+        loaded: true,
+        loading: false,
+        error: '',
+        entries: normalizedEntries,
+      });
+      normalizedEntries.forEach((entry) => {
+        state.entryIndex.set(entry.relativePath, entry);
+      });
+    }
+
+    /**
+     * Return one cached directory snapshot, if any.
+     *
+     * @param {object} state
+     * @param {string} relativePath
+     * @returns {{ loaded: boolean, loading: boolean, error: string, entries: Array<object> } | null}
+     */
+    function getWorkspaceTreeDirectory(state, relativePath) {
+      const normalizedPath = normalizeWorkspaceRelativePath(relativePath);
+      return state.directoryCache.get(normalizedPath) || null;
+    }
+
+    /**
+     * Schedule a tree repaint and coalesce async refreshes.
+     *
+     * @param {object} nodeEntry
+     * @returns {void}
+     */
+    function scheduleWorkspaceTreeRender(nodeEntry) {
+      nodeEntry.treeRenderQueued = true;
+      requestAnimationFrame(() => {
+        if (!nodeEntry.treeRenderQueued) return;
+        nodeEntry.treeRenderQueued = false;
+        renderWorkspaceTreePanel(nodeEntry, nodeEntry.workspaceKey, nodeEntry.cwd);
+      });
+    }
+
+    /**
+     * Load one directory listing into the cache.
+     *
+     * @param {object} nodeEntry
+     * @param {object} state
+     * @param {string} relativePath
+     * @param {{ force?: boolean }} [options]
+     * @returns {Promise<void>}
+     */
+    async function loadWorkspaceTreeDirectory(nodeEntry, state, relativePath, options = {}) {
+      const normalizedPath = normalizeWorkspaceRelativePath(relativePath);
+      const current = state.directoryCache.get(normalizedPath);
+      if (current?.loaded && !options.force) return;
+      if (state.loadingPaths.has(normalizedPath) && !options.force) return;
+
+      const nextToken = (state.loadTokens.get(normalizedPath) || 0) + 1;
+      state.loadTokens.set(normalizedPath, nextToken);
+      state.loadingPaths.add(normalizedPath);
+      state.directoryCache.set(normalizedPath, {
+        loaded: false,
+        loading: true,
+        error: '',
+        entries: current?.entries || [],
+      });
+      state.lastMessage = normalizedPath ? `Loading ${normalizedPath || '.'}...` : 'Loading workspace tree...';
+      scheduleWorkspaceTreeRender(nodeEntry);
+
+      try {
+        const response = await window.sessionsAPI.listWorkspaceEntries({
+          cwd: state.cwd,
+          relativePath: normalizedPath || null,
+        });
+        if (state.loadTokens.get(normalizedPath) !== nextToken) return;
+        const entries = Array.isArray(response?.entries) ? response.entries : [];
+        storeWorkspaceTreeDirectory(state, normalizedPath, entries);
+        state.lastMessage = normalizedPath ? `Loaded ${normalizedPath || '.'}` : 'Workspace tree ready';
+        state.lastError = '';
+      } catch (error) {
+        if (state.loadTokens.get(normalizedPath) !== nextToken) return;
+        state.directoryCache.set(normalizedPath, {
+          loaded: false,
+          loading: false,
+          error: error?.message || String(error),
+          entries: [],
+        });
+        state.lastError = error?.message || String(error);
+      } finally {
+        state.loadingPaths.delete(normalizedPath);
+        scheduleWorkspaceTreeRender(nodeEntry);
+      }
+    }
+
+    /**
+     * Render one tree row with folder/file affordances.
+     *
+     * @param {object} nodeEntry
+     * @param {object} state
+     * @param {object} entry
+     * @param {number} depth
+     * @returns {HTMLDivElement}
+     */
+    function createWorkspaceTreeRow(nodeEntry, state, entry, depth) {
+      const row = document.createElement('div');
+      row.className = `workspace-tree-item is-${entry.kind}${state.selectedRelativePath === entry.relativePath ? ' selected' : ''}`;
+      row.style.paddingLeft = `${8 + depth * 14}px`;
+      row.dataset.relativePath = entry.relativePath;
+      row.dataset.kind = entry.kind;
+
+      const disclosure = document.createElement('button');
+      disclosure.type = 'button';
+      disclosure.className = 'workspace-tree-disclosure';
+      disclosure.textContent = entry.kind === 'directory'
+        ? (state.expandedPaths.has(entry.relativePath) ? WORKSPACE_TREE_EXPANDED_ICON : WORKSPACE_TREE_COLLAPSED_ICON)
+        : '';
+      if (entry.kind !== 'directory') {
+        disclosure.classList.add('is-hidden');
+      } else {
+        disclosure.addEventListener('click', (event) => {
+          event.stopPropagation();
+          toggleWorkspaceTreeDirectory(nodeEntry, state, entry.relativePath);
+        });
+      }
+
+      const icon = document.createElement('div');
+      icon.className = 'workspace-tree-item-icon';
+      icon.innerHTML = entry.kind === 'directory' ? WORKSPACE_TREE_FOLDER_ICON : WORKSPACE_TREE_FILE_ICON;
+
+      const name = document.createElement('div');
+      name.className = 'workspace-tree-item-name';
+      name.textContent = entry.name;
+      name.title = entry.relativePath;
+
+      const meta = document.createElement('div');
+      meta.className = 'workspace-tree-item-meta';
+      meta.textContent = entry.kind === 'directory' ? 'dir' : 'file';
+
+      row.append(disclosure, icon, name, meta);
+
+      row.addEventListener('click', (event) => {
+        event.stopPropagation();
+        setWorkspaceTreeSelection(nodeEntry, state, entry.relativePath);
+      });
+
+      row.addEventListener('dblclick', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setWorkspaceTreeSelection(nodeEntry, state, entry.relativePath);
+        if (entry.kind === 'directory') {
+          toggleWorkspaceTreeDirectory(nodeEntry, state, entry.relativePath);
+        } else {
+          openWorkspaceTreeContextMenu(nodeEntry, state, entry.relativePath, event);
+        }
+      });
+
+      row.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setWorkspaceTreeSelection(nodeEntry, state, entry.relativePath);
+        openWorkspaceTreeContextMenu(nodeEntry, state, entry.relativePath, event);
+      });
+
+      return row;
+    }
+
+    /**
+     * Update the selected tree entry and refresh the visible state.
+     *
+     * @param {object} nodeEntry
+     * @param {object} state
+     * @param {string} relativePath
+     * @param {{ openMenu?: boolean, focusMenu?: boolean }} [options]
+     * @returns {void}
+     */
+    function setWorkspaceTreeSelection(nodeEntry, state, relativePath, options = {}) {
+      state.selectedRelativePath = normalizeWorkspaceRelativePath(relativePath);
+      nodeEntry.selectedTreePath = state.selectedRelativePath;
+      state.lastMessage = state.selectedRelativePath ? `Selected ${state.selectedRelativePath}` : 'Selected workspace root';
+      state.lastError = '';
+      activeWorkspaceTreeKey = state.workspaceKey;
+      updateWorkspaceTreeFooter(nodeEntry, state);
+      renderWorkspaceTreePanel(nodeEntry, state.workspaceKey, state.cwd);
+      if (options.openMenu) {
+        const fallbackEvent = {
+          clientX: 0,
+          clientY: 0,
+          preventDefault() {},
+        };
+        openWorkspaceTreeContextMenu(nodeEntry, state, state.selectedRelativePath, fallbackEvent);
+      }
+    }
+
+    /**
+     * Toggle one directory open or closed.
+     *
+     * @param {object} nodeEntry
+     * @param {object} state
+     * @param {string} relativePath
+     * @returns {void}
+     */
+    function toggleWorkspaceTreeDirectory(nodeEntry, state, relativePath) {
+      const normalizedPath = normalizeWorkspaceRelativePath(relativePath);
+      if (state.expandedPaths.has(normalizedPath)) {
+        state.expandedPaths.delete(normalizedPath);
+        state.lastMessage = `Collapsed ${normalizedPath}`;
+        renderWorkspaceTreePanel(nodeEntry, state.workspaceKey, state.cwd);
+        return;
+      }
+
+      state.expandedPaths.add(normalizedPath);
+      state.lastMessage = `Expanded ${normalizedPath}`;
+      renderWorkspaceTreePanel(nodeEntry, state.workspaceKey, state.cwd);
+      void loadWorkspaceTreeDirectory(nodeEntry, state, normalizedPath);
+    }
+
+    /**
+     * Remove the current tree context menu, if present.
+     *
+     * @returns {void}
+     */
+    function closeWorkspaceTreeContextMenu() {
+      if (workspaceTreeMenuEl) {
+        workspaceTreeMenuEl.remove();
+        workspaceTreeMenuEl = null;
+      }
+      if (workspaceTreeMenuCloseHandler) {
+        window.removeEventListener('pointerdown', workspaceTreeMenuCloseHandler, true);
+        window.removeEventListener('blur', workspaceTreeMenuCloseHandler);
+        window.removeEventListener('resize', workspaceTreeMenuCloseHandler);
+        window.removeEventListener('scroll', workspaceTreeMenuCloseHandler, true);
+        document.removeEventListener('keydown', workspaceTreeMenuCloseHandler, true);
+        workspaceTreeMenuCloseHandler = null;
+      }
+    }
+
+    /**
+     * Create one menu item for the tree context menu.
+     *
+     * @param {string} label
+     * @param {string} shortcut
+     * @param {() => void | Promise<void>} onClick
+     * @param {boolean} disabled
+     * @returns {HTMLButtonElement}
+     */
+    function createWorkspaceTreeMenuItem(label, shortcut, onClick, disabled = false) {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'workspace-context-menu-item';
+      item.disabled = disabled;
+
+      const labelSpan = document.createElement('span');
+      labelSpan.className = 'workspace-context-menu-label';
+      labelSpan.textContent = label;
+      item.appendChild(labelSpan);
+
+      const shortcutSpan = document.createElement('span');
+      shortcutSpan.className = 'workspace-context-menu-shortcut';
+      shortcutSpan.textContent = shortcut;
+      item.appendChild(shortcutSpan);
+
+      item.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        if (disabled) return;
+        closeWorkspaceTreeContextMenu();
+        await onClick();
+      });
+
+      return item;
+    }
+
+    /**
+     * Open the tree context menu for one entry.
+     *
+     * @param {object} nodeEntry
+     * @param {object} state
+     * @param {string} relativePath
+     * @param {{ clientX?: number, clientY?: number }} anchor
+     * @returns {void}
+     */
+    function openWorkspaceTreeContextMenu(nodeEntry, state, relativePath, anchor) {
+      closeWorkspaceTreeContextMenu();
+
+      const normalizedPath = normalizeWorkspaceRelativePath(relativePath);
+      const entry = state.entryIndex.get(normalizedPath) || null;
+      const hasSelection = !!normalizedPath;
+      const isDirectory = entry?.kind === 'directory';
+      const pasteTarget = isDirectory ? normalizedPath : getWorkspaceParentRelativePath(normalizedPath);
+      const clipboardState = state.clipboardState;
+
+      const menu = document.createElement('div');
+      menu.className = 'workspace-context-menu';
+
+      const items = [
+        createWorkspaceTreeMenuItem('Cut', '⌘X', async () => runWorkspaceTreeClipboardOperation(nodeEntry, state, 'cut', normalizedPath), !hasSelection),
+        createWorkspaceTreeMenuItem('Copy', '⌘C', async () => runWorkspaceTreeClipboardOperation(nodeEntry, state, 'copy', normalizedPath), !hasSelection),
+        createWorkspaceTreeMenuItem('Paste', '⌘V', async () => runWorkspaceTreePasteOperation(nodeEntry, state, pasteTarget), !clipboardState?.hasItem),
+        createWorkspaceTreeMenuItem('Copy relative path', '⌥⌘C', async () => runWorkspaceTreeCopyPath(nodeEntry, state, normalizedPath, 'relative'), !hasSelection),
+        createWorkspaceTreeMenuItem('Copy absolute path', '⌥⇧⌘C', async () => runWorkspaceTreeCopyPath(nodeEntry, state, normalizedPath, 'absolute'), !hasSelection),
+        createWorkspaceTreeMenuItem('Delete', '⌘⌫', async () => runWorkspaceTreeDeleteOperation(nodeEntry, state, normalizedPath), !hasSelection),
+        createWorkspaceTreeMenuItem('Rename', '↩', async () => runWorkspaceTreeRenameOperation(nodeEntry, state, normalizedPath), !hasSelection),
+      ];
+
+      items.forEach((item) => menu.appendChild(item));
+      document.body.appendChild(menu);
+      workspaceTreeMenuEl = menu;
+
+      const menuWidth = 260;
+      const menuHeight = Math.min(items.length * 38 + 12, 360);
+      const x = Math.min(Math.max(12, Number(anchor?.clientX || 0)), window.innerWidth - menuWidth - 12);
+      const y = Math.min(Math.max(12, Number(anchor?.clientY || 0)), window.innerHeight - menuHeight - 12);
+      menu.style.left = `${x}px`;
+      menu.style.top = `${y}px`;
+
+      workspaceTreeMenuCloseHandler = (event) => {
+        if (workspaceTreeMenuEl && !workspaceTreeMenuEl.contains(event.target)) {
+          closeWorkspaceTreeContextMenu();
+        }
+      };
+      window.addEventListener('pointerdown', workspaceTreeMenuCloseHandler, true);
+      window.addEventListener('blur', workspaceTreeMenuCloseHandler);
+      window.addEventListener('resize', workspaceTreeMenuCloseHandler);
+      window.addEventListener('scroll', workspaceTreeMenuCloseHandler, true);
+      document.addEventListener('keydown', workspaceTreeMenuCloseHandler, true);
+    }
+
+    /**
+     * Copy or cut one tree entry into the host clipboard.
+     *
+     * @param {object} nodeEntry
+     * @param {object} state
+     * @param {'cut' | 'copy'} mode
+     * @param {string} relativePath
+     * @returns {Promise<void>}
+     */
+    async function runWorkspaceTreeClipboardOperation(nodeEntry, state, mode, relativePath) {
+      const normalizedPath = normalizeWorkspaceRelativePath(relativePath);
+      if (!normalizedPath) return;
+      await window.sessionsAPI.setWorkspaceClipboard({
+        cwd: state.cwd,
+        relativePath: normalizedPath,
+        mode,
+      });
+      state.clipboardState = await window.sessionsAPI.getWorkspaceClipboard();
+      state.lastMessage = `${mode === 'cut' ? 'Cut' : 'Copied'} ${normalizedPath}`;
+      state.lastError = '';
+      updateWorkspaceTreeFooter(nodeEntry, state);
+      renderWorkspaceTreePanel(nodeEntry, state.workspaceKey, state.cwd);
+    }
+
+    /**
+     * Paste the current clipboard into one target directory.
+     *
+     * @param {object} nodeEntry
+     * @param {object} state
+     * @param {string} targetRelativePath
+     * @returns {Promise<void>}
+     */
+    async function runWorkspaceTreePasteOperation(nodeEntry, state, targetRelativePath) {
+      try {
+        const result = await window.sessionsAPI.pasteWorkspaceClipboard({
+          cwd: state.cwd,
+          targetRelativePath: normalizeWorkspaceRelativePath(targetRelativePath) || null,
+        });
+        state.clipboardState = await window.sessionsAPI.getWorkspaceClipboard();
+        state.lastMessage = `Pasted ${result?.relativePath || 'entry'}`;
+        state.lastError = '';
+        await refreshWorkspaceTreePanel(nodeEntry, state, { keepSelection: true });
+      } catch (error) {
+        state.lastError = error?.message || String(error);
+        updateWorkspaceTreeFooter(nodeEntry, state);
+      }
+    }
+
+    /**
+     * Copy one entry path in the requested format.
+     *
+     * @param {object} nodeEntry
+     * @param {object} state
+     * @param {string} relativePath
+     * @param {'relative' | 'absolute'} format
+     * @returns {Promise<void>}
+     */
+    async function runWorkspaceTreeCopyPath(nodeEntry, state, relativePath, format) {
+      const normalizedPath = normalizeWorkspaceRelativePath(relativePath);
+      if (!normalizedPath) return;
+      await window.sessionsAPI.copyWorkspacePath({
+        cwd: state.cwd,
+        relativePath: normalizedPath,
+        format,
+      });
+      state.lastMessage = `Copied ${format} path`;
+      state.lastError = '';
+      updateWorkspaceTreeFooter(nodeEntry, state);
+    }
+
+    /**
+     * Rename one entry through the host API.
+     *
+     * @param {object} nodeEntry
+     * @param {object} state
+     * @param {string} relativePath
+     * @returns {Promise<void>}
+     */
+    async function runWorkspaceTreeRenameOperation(nodeEntry, state, relativePath) {
+      const normalizedPath = normalizeWorkspaceRelativePath(relativePath);
+      if (!normalizedPath) return;
+      const currentName = getWorkspaceEntryName(normalizedPath);
+      const nextName = window.prompt('Rename workspace entry', currentName);
+      if (nextName == null) return;
+      const trimmed = nextName.trim();
+      if (!trimmed || trimmed === currentName) return;
+
+      const result = await window.sessionsAPI.renameWorkspaceEntry({
+        cwd: state.cwd,
+        relativePath: normalizedPath,
+        nextName: trimmed,
+      });
+      state.selectedRelativePath = normalizeWorkspaceRelativePath(result?.relativePath || joinWorkspaceRelativePath(getWorkspaceParentRelativePath(normalizedPath), trimmed));
+      state.lastMessage = `Renamed to ${getWorkspaceEntryName(state.selectedRelativePath)}`;
+      state.lastError = '';
+      await refreshWorkspaceTreePanel(nodeEntry, state, { keepSelection: true });
+    }
+
+    /**
+     * Delete one entry after confirmation.
+     *
+     * @param {object} nodeEntry
+     * @param {object} state
+     * @param {string} relativePath
+     * @returns {Promise<void>}
+     */
+    async function runWorkspaceTreeDeleteOperation(nodeEntry, state, relativePath) {
+      const normalizedPath = normalizeWorkspaceRelativePath(relativePath);
+      if (!normalizedPath) return;
+      const entry = state.entryIndex.get(normalizedPath);
+      const label = entry?.name || normalizedPath;
+      const confirmed = window.confirm(`Delete "${label}"? This cannot be undone.`);
+      if (!confirmed) return;
+
+      await window.sessionsAPI.deleteWorkspaceEntry({
+        cwd: state.cwd,
+        relativePath: normalizedPath,
+      });
+      state.selectedRelativePath = getWorkspaceParentRelativePath(normalizedPath);
+      state.lastMessage = `Deleted ${normalizedPath}`;
+      state.lastError = '';
+      await refreshWorkspaceTreePanel(nodeEntry, state, { keepSelection: true });
+    }
+
+    /**
+     * Create one file or folder inside the selected directory.
+     *
+     * @param {object} nodeEntry
+     * @param {object} state
+     * @param {'file' | 'directory'} kind
+     * @returns {Promise<void>}
+     */
+    async function runWorkspaceTreeCreateOperation(nodeEntry, state, kind) {
+      const targetRelativePath = resolveWorkspaceTreePasteTarget(state);
+      const entryLabel = kind === 'directory' ? 'folder' : 'file';
+      const nextName = window.prompt(`New ${entryLabel} name`, kind === 'directory' ? 'new-folder' : 'new-file.txt');
+      if (nextName == null) return;
+      const trimmed = nextName.trim();
+      if (!trimmed) return;
+
+      const result = await window.sessionsAPI.createWorkspaceEntry({
+        cwd: state.cwd,
+        parentRelativePath: targetRelativePath || null,
+        name: trimmed,
+        kind,
+      });
+      state.selectedRelativePath = normalizeWorkspaceRelativePath(result?.relativePath || joinWorkspaceRelativePath(targetRelativePath, trimmed));
+      state.lastMessage = `Created ${state.selectedRelativePath}`;
+      state.lastError = '';
+      await refreshWorkspaceTreePanel(nodeEntry, state, { keepSelection: true });
+    }
+
+    /**
+     * Refresh one workspace tree while preserving selection and expansion state.
+     *
+     * @param {object} nodeEntry
+     * @param {object} state
+     * @param {{ keepSelection?: boolean }} [options]
+     * @returns {Promise<void>}
+     */
+    async function refreshWorkspaceTreePanel(nodeEntry, state, options = {}) {
+      const keepSelection = options.keepSelection !== false;
+      const nextSelection = keepSelection ? state.selectedRelativePath : '';
+      resetWorkspaceTreeState(state);
+      state.selectedRelativePath = normalizeWorkspaceRelativePath(nextSelection);
+      updateWorkspaceTreeFooter(nodeEntry, state);
+      renderWorkspaceTreePanel(nodeEntry, state.workspaceKey, state.cwd);
+      await syncWorkspaceTreeClipboardState(nodeEntry, state);
+      await loadWorkspaceTreeDirectory(nodeEntry, state, '');
+    }
+
+    /**
+     * Render the tree panel for one workspace.
+     *
+     * @param {object} nodeEntry
+     * @param {string} workspaceKey
+     * @param {string} cwd
+     * @returns {void}
+     */
+    function renderWorkspaceTreePanel(nodeEntry, workspaceKey, cwd, options = {}) {
+      if (!nodeEntry?.treePanel || !nodeEntry?.treeViewport || !nodeEntry?.treeRefreshBtn) return;
+
+      const state = ensureWorkspaceTreeState(workspaceKey, cwd);
+      const deferLoad = !!options.deferLoad;
+      if (nodeEntry.expandedShell) {
+        nodeEntry.expandedShell.style.gridTemplateColumns = cwd ? '' : '1fr';
+      }
+      if (nodeEntry.treePanel) {
+        nodeEntry.treePanel.hidden = !cwd;
+      }
+      nodeEntry.treeRefreshBtn.disabled = !cwd;
+      nodeEntry.treeNewFileBtn.disabled = !cwd;
+      nodeEntry.treeNewFolderBtn.disabled = !cwd;
+
+      if (!cwd) {
+        nodeEntry.treeViewport.replaceChildren(createTreeEmptyState('No workspace folder is available.'));
+        updateWorkspaceTreeFooter(nodeEntry, state);
+        return;
+      }
+
+      const snapshot = getWorkspaceTreeDirectory(state, '');
+      if (!snapshot && !state.loadingPaths.has('')) {
+        if (deferLoad) {
+          nodeEntry.treeViewport.replaceChildren(createTreeEmptyState('Expand the workspace to load its files.'));
+        } else {
+          void loadWorkspaceTreeDirectory(nodeEntry, state, '');
+          nodeEntry.treeViewport.replaceChildren(createTreeEmptyState('Loading workspace tree...'));
+        }
+        updateWorkspaceTreeFooter(nodeEntry, state);
+        return;
+      }
+
+      const viewport = document.createElement('div');
+      viewport.className = 'workspace-tree-root';
+      renderWorkspaceTreeDirectory(nodeEntry, state, viewport, '', 0);
+      if (viewport.childNodes.length === 0) {
+        viewport.appendChild(createTreeEmptyState(state.lastError || 'This workspace folder is empty.'));
+      }
+      nodeEntry.treeViewport.replaceChildren(viewport);
+      updateWorkspaceTreeFooter(nodeEntry, state);
+      void syncWorkspaceTreeClipboardState(nodeEntry, state);
+      if (!deferLoad && !snapshot?.loaded && !state.loadingPaths.has('')) {
+        void loadWorkspaceTreeDirectory(nodeEntry, state, '');
+      }
+    }
+
+    /**
+     * Render one tree directory recursively.
+     *
+     * @param {object} nodeEntry
+     * @param {object} state
+     * @param {HTMLElement} container
+     * @param {string} relativePath
+     * @param {number} depth
+     * @returns {void}
+     */
+    function renderWorkspaceTreeDirectory(nodeEntry, state, container, relativePath, depth) {
+      const snapshot = getWorkspaceTreeDirectory(state, relativePath);
+      if (!snapshot) {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'workspace-tree-empty';
+        placeholder.textContent = state.loadingPaths.has(relativePath) ? 'Loading...' : 'Expand to load this folder.';
+        container.appendChild(placeholder);
+        if (!state.loadingPaths.has(relativePath)) {
+          void loadWorkspaceTreeDirectory(nodeEntry, state, relativePath);
+        }
+        return;
+      }
+
+      if (snapshot.error) {
+        const errorRow = document.createElement('div');
+        errorRow.className = 'workspace-tree-empty';
+        errorRow.style.color = '#ff8a8a';
+        errorRow.textContent = snapshot.error;
+        container.appendChild(errorRow);
+        return;
+      }
+
+      snapshot.entries.forEach((entry) => {
+        const row = createWorkspaceTreeRow(nodeEntry, state, entry, depth);
+        container.appendChild(row);
+
+        if (entry.kind === 'directory' && state.expandedPaths.has(entry.relativePath)) {
+          const children = document.createElement('div');
+          children.className = 'workspace-tree-children';
+          container.appendChild(children);
+          renderWorkspaceTreeDirectory(nodeEntry, state, children, entry.relativePath, depth + 1);
+        }
+      });
+    }
+
+    /**
+     * Create a simple tree empty-state node.
+     *
+     * @param {string} text
+     * @returns {HTMLDivElement}
+     */
+    function createTreeEmptyState(text) {
+      const empty = document.createElement('div');
+      empty.className = 'workspace-tree-empty';
+      empty.textContent = text;
+      return empty;
+    }
+
+    /**
+     * Handle host-level keyboard shortcuts for the workspace tree.
+     *
+     * @param {KeyboardEvent} event
+     * @returns {void}
+     */
+    function handleWorkspaceTreeKeydown(event) {
+      const activeKey = activeWorkspaceTreeKey;
+      const state = activeKey ? WORKSPACE_TREE_STATE.get(activeKey) : null;
+      if (!state || !state.cwd) return;
+
+      const target = event.target;
+      const isTextField = target && (
+        target.tagName === 'INPUT'
+        || target.tagName === 'TEXTAREA'
+        || target.isContentEditable
+      );
+      if (isTextField && event.key !== 'Escape') return;
+      if (workspaceTreeMenuEl) return;
+
+      const selection = getWorkspaceTreeSelection(state);
+      const hasSelection = !!selection.relativePath;
+      const isMeta = !!event.metaKey;
+      const isAlt = !!event.altKey;
+      const key = String(event.key || '').toLowerCase();
+
+      const run = async (task) => {
+        event.preventDefault();
+        event.stopPropagation();
+        await task();
+      };
+
+      if (isMeta && !isAlt && key === 'x' && hasSelection) {
+        void run(() => runWorkspaceTreeClipboardOperation(findWorkspaceTreeNodeEntry(state), state, 'cut', selection.relativePath));
+        return;
+      }
+
+      if (isMeta && !isAlt && key === 'c' && !event.shiftKey && hasSelection) {
+        void run(() => runWorkspaceTreeClipboardOperation(findWorkspaceTreeNodeEntry(state), state, 'copy', selection.relativePath));
+        return;
+      }
+
+      if (isMeta && !isAlt && key === 'v') {
+        void run(() => runWorkspaceTreePasteOperation(findWorkspaceTreeNodeEntry(state), state, resolveWorkspaceTreePasteTarget(state)));
+        return;
+      }
+
+      if (isMeta && isAlt && !event.shiftKey && key === 'c' && hasSelection) {
+        void run(() => runWorkspaceTreeCopyPath(findWorkspaceTreeNodeEntry(state), state, selection.relativePath, 'relative'));
+        return;
+      }
+
+      if (isMeta && isAlt && event.shiftKey && key === 'c' && hasSelection) {
+        void run(() => runWorkspaceTreeCopyPath(findWorkspaceTreeNodeEntry(state), state, selection.relativePath, 'absolute'));
+        return;
+      }
+
+      if (isMeta && key === 'backspace' && hasSelection) {
+        void run(() => runWorkspaceTreeDeleteOperation(findWorkspaceTreeNodeEntry(state), state, selection.relativePath));
+        return;
+      }
+
+      if (key === 'enter' && hasSelection) {
+        void run(() => runWorkspaceTreeRenameOperation(findWorkspaceTreeNodeEntry(state), state, selection.relativePath));
+      }
+    }
+
+    /**
+     * Resolve the active workspace node entry for one tree state.
+     *
+     * @param {object} state
+     * @returns {object}
+     */
+    function findWorkspaceTreeNodeEntry(state) {
+      return workspaceNodeMap.get(state.workspaceKey) || createWorkspaceNodes();
+    }
+
+    window.addEventListener('keydown', handleWorkspaceTreeKeydown, true);
 
     /**
      * Render the empty-state placeholder.
@@ -750,11 +2032,14 @@
     /**
      * Create the persistent node bundle for a workspace row.
      *
-     * @returns {{row: HTMLDivElement, threadsContainer: HTMLDivElement, workspaceNameEl: HTMLDivElement, activeBadgeEl: HTMLSpanElement, actions: HTMLDivElement, threadRenderKey: string, progressExpanded: boolean}}
+     * @returns {{row: HTMLDivElement, threadsContainer: HTMLDivElement, workspaceNameEl: HTMLDivElement, activeBadgeEl: HTMLSpanElement, actions: HTMLDivElement, nameText: HTMLSpanElement, deleteBtn: HTMLButtonElement, createProcessBtn: HTMLButtonElement, threadRenderKey: string, progressExpanded: boolean}}
      */
     function createWorkspaceNodes() {
       const row = document.createElement('div');
       row.className = 'workspace-row';
+      row.setAttribute('role', 'button');
+      row.tabIndex = 0;
+      row.setAttribute('aria-expanded', 'false');
 
       const folderIcon = createIconNode(WORKSPACE_ICON, 'folder-icon');
       const workspaceNameEl = document.createElement('div');
@@ -768,26 +2053,78 @@
 
       const actions = document.createElement('div');
       actions.className = 'actions';
-      const closeBtn = createActionButton('Close Workspace', CLOSE_ICON, 'close');
-      const newThreadBtn = createActionButton('New Thread', NEW_THREAD_ICON);
-      actions.append(closeBtn, newThreadBtn);
+      const deleteBtn = createActionButton('Delete Workspace', DELETE_WORKSPACE_ICON, 'delete');
+      const createProcessBtn = createActionButton('Create Process', CREATE_PROCESS_ICON, 'process');
+      actions.append(deleteBtn, createProcessBtn);
 
       row.append(folderIcon, workspaceNameEl, actions);
 
       const threadsContainer = document.createElement('div');
       threadsContainer.className = 'threads-container';
 
+      const expandedShell = document.createElement('div');
+      expandedShell.className = 'workspace-expanded-shell';
+
+      const treePanel = document.createElement('div');
+      treePanel.className = 'workspace-tree-panel';
+
+      const treeToolbar = document.createElement('div');
+      treeToolbar.className = 'workspace-tree-toolbar';
+
+      const treeNewFileBtn = document.createElement('button');
+      treeNewFileBtn.type = 'button';
+      treeNewFileBtn.className = 'workspace-tree-toolbar-button';
+      treeNewFileBtn.textContent = 'New File';
+
+      const treeNewFolderBtn = document.createElement('button');
+      treeNewFolderBtn.type = 'button';
+      treeNewFolderBtn.className = 'workspace-tree-toolbar-button';
+      treeNewFolderBtn.textContent = 'New Folder';
+
+      const treeRefreshBtn = document.createElement('button');
+      treeRefreshBtn.type = 'button';
+      treeRefreshBtn.className = 'workspace-tree-toolbar-button';
+      treeRefreshBtn.textContent = 'Refresh';
+
+      treeToolbar.append(treeNewFileBtn, treeNewFolderBtn, treeRefreshBtn);
+
+      const treeViewport = document.createElement('div');
+      treeViewport.className = 'workspace-tree-viewport';
+
+      const treeFooter = document.createElement('div');
+      treeFooter.className = 'workspace-tree-footer';
+
+      treePanel.append(treeToolbar, treeViewport, treeFooter);
+
+      const threadPanel = document.createElement('div');
+      threadPanel.className = 'workspace-thread-panel';
+
+      expandedShell.append(treePanel, threadPanel);
+      threadsContainer.appendChild(expandedShell);
+
       return {
         row,
         threadsContainer,
+        expandedShell,
+        treePanel,
+        treeToolbar,
+        treeViewport,
+        treeFooterEl: treeFooter,
+        treeNewFileBtn,
+        treeNewFolderBtn,
+        treeRefreshBtn,
+        threadPanel,
         workspaceNameEl,
         activeBadgeEl,
         actions,
         nameText,
-        closeBtn,
-        newThreadBtn,
+        deleteBtn,
+        createProcessBtn,
         threadRenderKey: '',
-        progressExpanded: false
+        progressExpanded: false,
+        treeRenderQueued: false,
+        workspaceKey: '',
+        cwd: '',
       };
     }
 
@@ -1261,6 +2598,245 @@
     }
 
     /**
+     * Render one file or folder row for the workspace explorer.
+     *
+     * @param {{ workspaceKey: string, cwd: string, depth: number, item: object }} options
+     * @returns {HTMLDivElement}
+     */
+    function renderExplorerItem(options) {
+      const workspaceKey = options.workspaceKey;
+      const cwd = options.cwd;
+      const item = options.item;
+      const depth = options.depth;
+      const state = getExplorerState(workspaceKey);
+      const relativePath = normalizeExplorerPath(item?.relativePath);
+      const isDirectory = item?.kind === 'directory';
+      const isExpanded = isDirectory && state.expandedPaths.has(relativePath);
+      const row = document.createElement('div');
+      row.className = `explorer-item${state.selectedPath === relativePath ? ' is-selected' : ''}`;
+      row.style.paddingLeft = `${8 + depth * 18}px`;
+
+      const chevron = document.createElement('div');
+      chevron.className = isDirectory ? `explorer-item-chevron${isExpanded ? ' is-expanded' : ''}` : 'explorer-item-spacer';
+      if (isDirectory) chevron.innerHTML = CHEVRON_RIGHT_ICON;
+
+      const icon = document.createElement('div');
+      icon.className = 'explorer-item-icon';
+      icon.innerHTML = isDirectory ? TREE_FOLDER_ICON : FILE_ICON;
+
+      const label = document.createElement('div');
+      label.className = 'explorer-item-label';
+      label.textContent = item?.name || relativePath || 'untitled';
+
+      const kind = document.createElement('div');
+      kind.className = 'explorer-item-kind';
+      kind.textContent = isDirectory ? 'dir' : 'file';
+
+      row.append(chevron, icon, label, kind);
+
+      const openMenu = async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        state.selectedPath = relativePath;
+        invalidateWorkspaceRenderKey(workspaceKey);
+        scheduleRender();
+        const anchorRect = row.getBoundingClientRect();
+        await openExplorerContextMenu({
+          anchorRect,
+          workspaceKey,
+          cwd,
+          item,
+        });
+      };
+
+      row.addEventListener('click', (event) => {
+        event.stopPropagation();
+        closeExplorerContextMenu();
+        state.selectedPath = relativePath;
+        invalidateWorkspaceRenderKey(workspaceKey);
+        scheduleRender();
+      });
+
+      row.addEventListener('contextmenu', openMenu);
+      row.addEventListener('dblclick', async (event) => {
+        if (isDirectory) {
+          await toggleExplorerDirectory({ workspaceKey, cwd, relativePath });
+          return;
+        }
+        await openMenu(event);
+      });
+
+      if (isDirectory) {
+        chevron.addEventListener('click', async (event) => {
+          event.stopPropagation();
+          await toggleExplorerDirectory({ workspaceKey, cwd, relativePath });
+        });
+      }
+
+      return row;
+    }
+
+    /**
+     * Render one directory subtree recursively.
+     *
+     * @param {{ container: HTMLElement, workspaceKey: string, cwd: string, relativePath?: string, depth?: number }} options
+     * @returns {void}
+     */
+    function appendExplorerRows(options) {
+      const workspaceKey = options.workspaceKey;
+      const cwd = options.cwd;
+      const relativePath = normalizeExplorerPath(options.relativePath);
+      const depth = Number.isInteger(options.depth) ? options.depth : 0;
+      const state = getExplorerState(workspaceKey);
+      const entries = state.entriesByPath.get(relativePath);
+
+      if (!entries) {
+        if (!state.loadingPaths.has(relativePath)) {
+          loadWorkspaceEntries({ workspaceKey, cwd, relativePath, force: false }).catch(showExplorerError);
+        }
+        if (depth === 0) {
+          const loading = document.createElement('div');
+          loading.className = 'explorer-loading';
+          loading.textContent = 'Loading…';
+          options.container.appendChild(loading);
+        }
+        return;
+      }
+
+      if (depth === 0 && entries.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'explorer-empty';
+        empty.textContent = 'Empty workspace';
+        options.container.appendChild(empty);
+        return;
+      }
+
+      entries.forEach((item) => {
+        options.container.appendChild(renderExplorerItem({ workspaceKey, cwd, depth, item }));
+        if (item?.kind === 'directory' && state.expandedPaths.has(item.relativePath)) {
+          appendExplorerRows({
+            container: options.container,
+            workspaceKey,
+            cwd,
+            relativePath: item.relativePath,
+            depth: depth + 1,
+          });
+        }
+      });
+    }
+
+    /**
+     * Render the explorer panel for one expanded workspace.
+     *
+     * @param {{ workspaceKey: string, cwd: string }} options
+     * @returns {HTMLDivElement}
+     */
+    function renderWorkspaceExplorer(options) {
+      const workspaceKey = options.workspaceKey;
+      const cwd = options.cwd;
+      const panel = document.createElement('div');
+      panel.className = 'explorer-panel';
+      panel.addEventListener('click', (event) => event.stopPropagation());
+
+      const header = document.createElement('div');
+      header.className = 'explorer-header';
+
+      const title = document.createElement('div');
+      title.className = 'explorer-title';
+      title.innerHTML = `${TREE_FOLDER_ICON}<span class="explorer-title-text">${cwd.split(/[\\/]/).pop() || cwd}</span>`;
+      header.appendChild(title);
+
+      const toolbar = document.createElement('div');
+      toolbar.className = 'explorer-toolbar';
+      const createFileButton = document.createElement('button');
+      createFileButton.type = 'button';
+      createFileButton.className = 'explorer-toolbar-btn';
+      createFileButton.title = '新建文件';
+      createFileButton.innerHTML = NEW_FILE_ICON;
+      createFileButton.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        closeExplorerContextMenu();
+        await handleExplorerCreate({ workspaceKey, cwd, kind: 'file' });
+      });
+
+      const createFolderButton = document.createElement('button');
+      createFolderButton.type = 'button';
+      createFolderButton.className = 'explorer-toolbar-btn';
+      createFolderButton.title = '新建文件夹';
+      createFolderButton.innerHTML = NEW_FOLDER_ICON;
+      createFolderButton.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        closeExplorerContextMenu();
+        await handleExplorerCreate({ workspaceKey, cwd, kind: 'directory' });
+      });
+
+      const refreshButton = document.createElement('button');
+      refreshButton.type = 'button';
+      refreshButton.className = 'explorer-toolbar-btn';
+      refreshButton.title = '刷新';
+      refreshButton.innerHTML = REFRESH_ICON;
+      refreshButton.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        closeExplorerContextMenu();
+        await refreshWorkspaceExplorer({ workspaceKey, cwd });
+      });
+
+      toolbar.append(createFileButton, createFolderButton, refreshButton);
+      header.appendChild(toolbar);
+      panel.appendChild(header);
+
+      const tree = document.createElement('div');
+      tree.className = 'explorer-tree';
+      appendExplorerRows({ container: tree, workspaceKey, cwd, relativePath: '', depth: 0 });
+      panel.appendChild(tree);
+
+      return panel;
+    }
+
+    /**
+     * Find one cached explorer entry by its relative path.
+     *
+     * @param {{ entriesByPath: Map<string, Array<object>> }} state
+     * @param {string} relativePath
+     * @returns {object | null}
+     */
+    function findExplorerItem(state, relativePath) {
+      for (const entries of state.entriesByPath.values()) {
+        const match = (entries || []).find((entry) => normalizeExplorerPath(entry?.relativePath) === relativePath);
+        if (match) return match;
+      }
+      return null;
+    }
+
+    /**
+     * Return the currently selected explorer item for keyboard shortcuts.
+     *
+     * @returns {{ workspaceKey: string, cwd: string, item: object } | null}
+     */
+    function getSelectedExplorerContext() {
+      if (!expandedWorkspaceCwd || !workspaceNodeMap.has(expandedWorkspaceCwd)) {
+        return null;
+      }
+
+      const workspaceEntry = latestPayload.entries.find((entry) => entry.workspaceKey === expandedWorkspaceCwd && entry.cwd);
+      const cwd = workspaceEntry?.cwd || null;
+      if (!cwd) return null;
+
+      const state = getExplorerState(expandedWorkspaceCwd);
+      const relativePath = normalizeExplorerPath(state.selectedPath);
+      if (!relativePath) return null;
+
+      const item = findExplorerItem(state, relativePath);
+      if (!item) return null;
+
+      return {
+        workspaceKey: expandedWorkspaceCwd,
+        cwd,
+        item,
+      };
+    }
+
+    /**
      * Build a stable key for the thread list inside one workspace.
      *
      * @param {Array<object>} threads
@@ -1284,26 +2860,38 @@
      * @returns {string}
      */
     function formatThreadRelativeTime(updatedAt) {
-      if (window.sessionsAPI?.formatRelativeTime) {
-        return window.sessionsAPI.formatRelativeTime(updatedAt);
-      }
-      return '';
+      const value = updatedAt instanceof Date ? updatedAt.getTime() : Number(updatedAt);
+      if (!Number.isFinite(value) || value <= 0) return '';
+
+      const deltaMs = Date.now() - value;
+      if (deltaMs < 60_000) return 'now';
+
+      const minutes = Math.floor(deltaMs / 60_000);
+      if (minutes < 60) return `${minutes} min`;
+
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours} h`;
+
+      const days = Math.floor(hours / 24);
+      return `${days} d`;
     }
 
     /**
      * Render the thread list for a workspace with safe DOM APIs.
      *
-     * @param {{threadsContainer: HTMLDivElement, threadRenderKey: string, progressExpanded: boolean}} nodeEntry
-     * @param {string} cwd
+     * @param {{threadPanel: HTMLDivElement, threadRenderKey: string, progressExpanded: boolean}} nodeEntry
+     * @param {string} workspaceKey
+     * @param {string | null} cwd
      * @param {Array<object>} threads
      * @param {object | null | undefined} taskView
      * @returns {void}
      */
-    function renderWorkspaceThreads(nodeEntry, cwd, threads, taskView) {
+    function renderWorkspaceThreads(nodeEntry, workspaceKey, cwd, threads, taskView) {
       const nextThreadKey = [
         buildThreadRenderKey(threads),
         buildTaskRenderKey(taskView, nodeEntry.progressExpanded),
-        cwd
+        workspaceKey,
+        cwd || ''
       ].join('::');
       if (nodeEntry.threadRenderKey === nextThreadKey) return;
 
@@ -1316,10 +2904,10 @@
 
       if (threads.length === 0) {
         const empty = document.createElement('div');
-        empty.style.cssText = 'padding: 12px 16px 12px 42px; font-size: 11px; color: var(--text-dim); font-style: italic;';
+        empty.style.cssText = 'padding: 12px 14px; font-size: 11px; color: var(--text-dim); font-style: italic;';
         empty.textContent = taskView ? 'No active threads in this workspace.' : 'No active threads in this workspace.';
         fragment.appendChild(empty);
-        nodeEntry.threadsContainer.replaceChildren(fragment);
+        nodeEntry.threadPanel.replaceChildren(fragment);
         return;
       }
 
@@ -1350,11 +2938,14 @@
         timeEl.textContent = formatThreadRelativeTime(thread.updatedAt);
 
         threadItem.append(statusDot, agentIcon, threadInfo, timeEl);
-        threadItem.addEventListener('click', () => window.sessionsAPI.focusThread(thread.id));
+        threadItem.addEventListener('click', () => {
+          closeWorkspaceTreeContextMenu();
+          window.sessionsAPI.focusThread(thread.id);
+        });
         fragment.appendChild(threadItem);
       });
 
-      nodeEntry.threadsContainer.replaceChildren(fragment);
+      nodeEntry.threadPanel.replaceChildren(fragment);
     }
 
     /**
@@ -1369,9 +2960,6 @@
       requestAnimationFrame(() => {
         renderQueued = false;
         const renderKey = buildPayloadKey(latestPayload);
-        if (renderKey === lastRenderKey && workspaceNodeMap.size > 0) {
-          return;
-        }
         renderSessions(latestPayload, renderKey);
       });
     }
@@ -1441,12 +3029,14 @@
       if (expandedWorkspaceCwd && !groups[expandedWorkspaceCwd]) {
         expandedWorkspaceCwd = null;
         shouldAutoExpandWorkspace = true;
+        activeWorkspaceTreeKey = null;
       }
 
       if (!expandedWorkspaceCwd && shouldAutoExpandWorkspace && sortedGroups.length > 0) {
         const preferredGroup = sortedGroups.find(([, data]) => data.hasFocusedThread || data.isActive) || sortedGroups[0];
         expandedWorkspaceCwd = preferredGroup[0];
         shouldAutoExpandWorkspace = false;
+        activeWorkspaceTreeKey = expandedWorkspaceCwd;
       }
 
       const nextWorkspaceNodeMap = new Map();
@@ -1460,27 +3050,52 @@
         const hasWorkspaceRoot = !!cwd;
 
         const nodeEntry = workspaceNodeMap.get(workspaceKey) || createWorkspaceNodes();
+        nodeEntry.workspaceKey = workspaceKey;
+        nodeEntry.cwd = cwd || '';
         nodeEntry.row.className = 'workspace-row' + (isActive ? ' active-ws' : '');
+        nodeEntry.row.title = cwd || 'Workspace path unavailable';
         nodeEntry.workspaceNameEl.title = cwd || 'Workspace path unavailable';
         nodeEntry.nameText.textContent = workspaceName;
         nodeEntry.activeBadgeEl.hidden = !isActive;
         nodeEntry.actions.hidden = !hasWorkspaceRoot;
-        nodeEntry.closeBtn.onclick = (event) => {
+        nodeEntry.deleteBtn.onclick = (event) => {
           event.stopPropagation();
           if (!cwd) return;
           window.sessionsAPI.closeWorkspace(cwd);
         };
-        nodeEntry.newThreadBtn.onclick = (event) => {
+        nodeEntry.createProcessBtn.onclick = (event) => {
           event.stopPropagation();
           if (!cwd) return;
           window.sessionsAPI.newThread(cwd);
         };
+        nodeEntry.treeNewFileBtn.onclick = async (event) => {
+          event.stopPropagation();
+          if (!cwd) return;
+          await runWorkspaceTreeCreateOperation(nodeEntry, ensureWorkspaceTreeState(workspaceKey, cwd), 'file');
+        };
+        nodeEntry.treeNewFolderBtn.onclick = async (event) => {
+          event.stopPropagation();
+          if (!cwd) return;
+          await runWorkspaceTreeCreateOperation(nodeEntry, ensureWorkspaceTreeState(workspaceKey, cwd), 'directory');
+        };
+        nodeEntry.treeRefreshBtn.onclick = async (event) => {
+          event.stopPropagation();
+          if (!cwd) return;
+          await refreshWorkspaceTreePanel(nodeEntry, ensureWorkspaceTreeState(workspaceKey, cwd), { keepSelection: true });
+        };
 
-        renderWorkspaceThreads(nodeEntry, workspaceKey, threads, cwd ? workspaceTaskViews[cwd] : null);
+        renderWorkspaceThreads(nodeEntry, workspaceKey, cwd, threads, cwd ? workspaceTaskViews[cwd] : null);
+        renderWorkspaceTreePanel(nodeEntry, workspaceKey, cwd || '', { deferLoad: workspaceKey !== expandedWorkspaceCwd });
 
         nodeEntry.row.onclick = () => {
-          const wasExpanded = expandedWorkspaceCwd === workspaceKey;
-          setExpandedWorkspace(wasExpanded ? null : workspaceKey, { manual: true });
+          closeWorkspaceTreeContextMenu();
+          toggleWorkspaceExpansion(workspaceKey);
+        };
+        nodeEntry.row.onkeydown = (event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          closeWorkspaceTreeContextMenu();
+          toggleWorkspaceExpansion(workspaceKey);
         };
 
         nextWorkspaceNodeMap.set(workspaceKey, nodeEntry);
@@ -1492,6 +3107,10 @@
       lastRenderKey = renderKey;
       applyExpandedWorkspaceState();
     }
+
+    document.addEventListener('click', () => {
+      closeWorkspaceTreeContextMenu();
+    });
 
     document.getElementById('close-sessions').onclick = () => window.sessionsAPI.hideSessions();
   </script>
