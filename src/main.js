@@ -3,7 +3,8 @@ const http = require("http");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { exec, execFile, spawn } = require("child_process");
+const { exec, execFile, spawn, spawnSync } = require("child_process");
+const { pathToFileURL } = require("url");
 const {
   buildSessionsWindowPayload,
   serializeSessionsWindowPayload,
@@ -20,6 +21,42 @@ const {
 const { formatCompactRelativeTime } = require("./relative-time");
 
 const isMac = process.platform === "darwin";
+const WORKSPACE_MARKDOWN_EXTENSIONS = new Set([".md", ".markdown", ".mdx"]);
+const WORKSPACE_TEX_EXTENSIONS = new Set([".tex", ".bib", ".sty", ".cls"]);
+const WORKSPACE_CODE_EXTENSIONS = new Set([
+  ".js",
+  ".jsx",
+  ".ts",
+  ".tsx",
+  ".json",
+  ".py",
+  ".rs",
+  ".go",
+  ".java",
+  ".c",
+  ".cc",
+  ".cpp",
+  ".h",
+  ".hpp",
+  ".css",
+  ".scss",
+  ".html",
+  ".xml",
+  ".yml",
+  ".yaml",
+  ".toml",
+  ".sh",
+  ".zsh",
+  ".bash",
+  ".sql",
+  ".swift",
+  ".kt",
+  ".php",
+  ".rb",
+  ".lua",
+  ".vue",
+  ".svelte",
+]);
 
 // ── Windows: AllowSetForegroundWindow via FFI ──
 // Grants the PowerShell helper process permission to call SetForegroundWindow.
@@ -1761,6 +1798,259 @@ function createWorkspaceEntry(options) {
 }
 
 /**
+ * Infer the workbench mode for one workspace file.
+ *
+ * @param {string} targetPath - Absolute file path.
+ * @returns {"markdown" | "tex" | "pdf" | "code" | "text"}
+ */
+function getWorkspaceDocumentMode(targetPath) {
+  const extension = path.extname(targetPath).toLowerCase();
+  if (WORKSPACE_MARKDOWN_EXTENSIONS.has(extension)) return "markdown";
+  if (WORKSPACE_TEX_EXTENSIONS.has(extension)) return "tex";
+  if (extension === ".pdf") return "pdf";
+  if (WORKSPACE_CODE_EXTENSIONS.has(extension)) return "code";
+  return "text";
+}
+
+/**
+ * Detect whether a buffer likely contains binary data.
+ *
+ * @param {Buffer} buffer - Candidate file buffer.
+ * @returns {boolean} True when the payload should not be edited as text.
+ */
+function isWorkspaceBinaryBuffer(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) return false;
+  const sample = buffer.subarray(0, Math.min(buffer.length, 4096));
+  for (const value of sample) {
+    if (value === 0) return true;
+  }
+  return false;
+}
+
+/**
+ * Read PDF metadata from the local host when tooling is available.
+ *
+ * @param {string} targetPath - Absolute PDF path.
+ * @returns {{ pageCount: number | null, source: string | null }} Parsed page metadata.
+ */
+function readWorkspacePdfMetadata(targetPath) {
+  if (!targetPath) return { pageCount: null, source: null };
+
+  if (isMac) {
+    const result = spawnSync("mdls", ["-raw", "-name", "kMDItemNumberOfPages", targetPath], {
+      encoding: "utf8",
+      timeout: 3000,
+    });
+    if (!result.error && result.status === 0) {
+      const pageCount = Number.parseInt(String(result.stdout || "").trim(), 10);
+      if (Number.isFinite(pageCount) && pageCount > 0) {
+        return { pageCount, source: "mdls" };
+      }
+    }
+  }
+
+  const result = spawnSync("pdfinfo", [targetPath], {
+    encoding: "utf8",
+    timeout: 3000,
+  });
+  if (!result.error && result.status === 0) {
+    const match = String(result.stdout || "").match(/^Pages:\s+(\d+)/m);
+    if (match) {
+      const pageCount = Number.parseInt(match[1], 10);
+      if (Number.isFinite(pageCount) && pageCount > 0) {
+        return { pageCount, source: "pdfinfo" };
+      }
+    }
+  }
+
+  return { pageCount: null, source: null };
+}
+
+/**
+ * Read one workspace document for the embedded workbench.
+ *
+ * @param {{ cwd: string, relativePath: string }} options - Workspace root and file path.
+ * @returns {object} Document payload for the renderer.
+ */
+function readWorkspaceDocument(options) {
+  const { rootPath, targetPath, normalizedRelativePath } = resolveWorkspacePath(options);
+  if (!normalizedRelativePath) {
+    throw new Error("A file must be selected before opening the workbench.");
+  }
+
+  const stat = fs.statSync(targetPath);
+  if (!stat.isFile()) {
+    throw new Error("The selected path is not a file.");
+  }
+
+  const extension = path.extname(targetPath).toLowerCase();
+  const fileName = path.basename(targetPath);
+  const mode = getWorkspaceDocumentMode(targetPath);
+  const basePayload = {
+    cwd: rootPath,
+    relativePath: normalizedRelativePath,
+    absolutePath: targetPath,
+    fileName,
+    extension,
+    mode,
+    size: stat.size,
+    updatedAt: stat.mtimeMs,
+    isEditable: mode !== "pdf",
+  };
+
+  if (mode === "pdf") {
+    const pdf = readWorkspacePdfMetadata(targetPath);
+    return {
+      ...basePayload,
+      pdf: {
+        ...pdf,
+        fileUrl: pathToFileURL(targetPath).toString(),
+      },
+    };
+  }
+
+  const buffer = fs.readFileSync(targetPath);
+  if (isWorkspaceBinaryBuffer(buffer)) {
+    throw new Error("Binary files are not yet supported in the embedded workbench.");
+  }
+
+  return {
+    ...basePayload,
+    content: buffer.toString("utf8"),
+  };
+}
+
+/**
+ * Persist one editable workspace document back to disk.
+ *
+ * @param {{ cwd: string, relativePath: string, content: string }} options - Workspace root, file path, and UTF-8 content.
+ * @returns {{ relativePath: string, updatedAt: number, size: number }} Save summary.
+ */
+function writeWorkspaceDocument(options) {
+  const { targetPath, normalizedRelativePath } = resolveWorkspacePath(options);
+  if (!normalizedRelativePath) {
+    throw new Error("A file must be selected before saving.");
+  }
+
+  const nextContent = typeof options?.content === "string" ? options.content : "";
+  fs.writeFileSync(targetPath, nextContent, "utf8");
+  const stat = fs.statSync(targetPath);
+  return {
+    relativePath: normalizedRelativePath,
+    updatedAt: stat.mtimeMs,
+    size: stat.size,
+  };
+}
+
+/**
+ * Run one TeX engine and collect a compact result payload.
+ *
+ * @param {{ command: string, args: string[], cwd: string, outputPath: string, rootPath: string }} options - Engine invocation details.
+ * @returns {Promise<object>} Compile summary.
+ */
+function runWorkspaceTexEngine(options) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(options.command, options.args, {
+      cwd: options.cwd,
+      env: process.env,
+      shell: false,
+    });
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.on("data", (chunk) => {
+      stdout += String(chunk);
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += String(chunk);
+    });
+    child.on("error", (error) => {
+      reject(error);
+    });
+    child.on("close", (code) => {
+      const combined = `${stdout}\n${stderr}`.trim();
+      if (code !== 0) {
+        const error = new Error(combined || `${options.command} exited with code ${code}.`);
+        error.logs = combined;
+        reject(error);
+        return;
+      }
+      if (!fs.existsSync(options.outputPath)) {
+        reject(new Error("Compilation finished without producing a PDF output."));
+        return;
+      }
+
+      const outputStat = fs.statSync(options.outputPath);
+      resolve({
+        engine: options.command,
+        outputAbsolutePath: options.outputPath,
+        outputRelativePath: path.relative(options.rootPath, options.outputPath),
+        outputFileUrl: pathToFileURL(options.outputPath).toString(),
+        pageCount: readWorkspacePdfMetadata(options.outputPath).pageCount,
+        updatedAt: outputStat.mtimeMs,
+        logs: combined,
+      });
+    });
+  });
+}
+
+/**
+ * Compile one workspace TeX document into a PDF preview artifact.
+ *
+ * @param {{ cwd: string, relativePath: string }} options - Workspace root and TeX file path.
+ * @returns {Promise<object>} Compile result payload.
+ */
+async function compileWorkspaceTexDocument(options) {
+  const { rootPath, targetPath, normalizedRelativePath } = resolveWorkspacePath(options);
+  if (path.extname(targetPath).toLowerCase() !== ".tex") {
+    throw new Error("Only .tex files can be compiled from the workbench.");
+  }
+
+  const workingDirectory = path.dirname(targetPath);
+  const fileName = path.basename(targetPath);
+  const outputPath = targetPath.replace(/\.tex$/i, ".pdf");
+  const candidates = [
+    {
+      command: "latexmk",
+      args: ["-pdf", "-interaction=nonstopmode", "-halt-on-error", fileName],
+    },
+    {
+      command: "pdflatex",
+      args: ["-interaction=nonstopmode", "-halt-on-error", fileName],
+    },
+  ];
+
+  let missingEngineCount = 0;
+  let lastError = null;
+  for (const candidate of candidates) {
+    try {
+      const result = await runWorkspaceTexEngine({
+        ...candidate,
+        cwd: workingDirectory,
+        outputPath,
+        rootPath,
+      });
+      return {
+        relativePath: normalizedRelativePath,
+        ...result,
+      };
+    } catch (error) {
+      if (error?.code === "ENOENT") {
+        missingEngineCount += 1;
+        lastError = error;
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  if (missingEngineCount === candidates.length) {
+    throw new Error("No TeX engine was found. Install latexmk or pdflatex first.");
+  }
+  throw lastError || new Error("TeX compilation failed.");
+}
+
+/**
  * Rename one workspace entry in place.
  *
  * @param {{ cwd: string, relativePath: string, nextName: string }} options - Workspace root, existing entry, and next basename.
@@ -3020,6 +3310,18 @@ function createWindow() {
 
   ipcMain.handle("workspace-tree:path:copy", async (event, options) => {
     return copyWorkspacePath(options);
+  });
+
+  ipcMain.handle("workspace-file:read", async (event, options) => {
+    return readWorkspaceDocument(options);
+  });
+
+  ipcMain.handle("workspace-file:write", async (event, options) => {
+    return writeWorkspaceDocument(options);
+  });
+
+  ipcMain.handle("workspace-file:tex:compile", async (event, options) => {
+    return compileWorkspaceTexDocument(options);
   });
 
   ipcMain.on("close-workspace", (event, cwd) => {

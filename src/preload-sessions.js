@@ -12,6 +12,36 @@ function invokeWorkspaceTree(channel, options) {
   return ipcRenderer.invoke(channel, options);
 }
 
+/**
+ * Read one workspace document through the main-process bridge.
+ *
+ * @param {object} options - Workspace root and relative file path.
+ * @returns {Promise<object>} Document payload for the renderer.
+ */
+function readWorkspaceDocument(options) {
+  return invokeWorkspaceTree("workspace-file:read", options);
+}
+
+/**
+ * Save one editable workspace document through the main-process bridge.
+ *
+ * @param {object} options - Workspace root, relative file path, and content.
+ * @returns {Promise<object>} Save result summary.
+ */
+function writeWorkspaceDocument(options) {
+  return invokeWorkspaceTree("workspace-file:write", options);
+}
+
+/**
+ * Compile one TeX document through the main-process bridge.
+ *
+ * @param {object} options - Workspace root and relative TeX file path.
+ * @returns {Promise<object>} Compile result payload.
+ */
+function compileWorkspaceTexDocument(options) {
+  return invokeWorkspaceTree("workspace-file:tex:compile", options);
+}
+
 contextBridge.exposeInMainWorld("sessionsAPI", {
   onSessionsUpdate: (cb) => ipcRenderer.on("sessions-update", (_, sessions) => cb(sessions)),
   closeWorkspace: (cwd) => ipcRenderer.send("close-workspace", cwd),
@@ -32,4 +62,7 @@ contextBridge.exposeInMainWorld("sessionsAPI", {
   copyWorkspaceAbsolutePath: (options) => invokeWorkspaceTree("workspace-tree:path:copy", { ...options, format: "absolute" }),
   cutWorkspaceEntry: (options) => invokeWorkspaceTree("workspace-tree:clipboard:set", { ...options, mode: "cut" }),
   copyWorkspaceEntry: (options) => invokeWorkspaceTree("workspace-tree:clipboard:set", { ...options, mode: "copy" }),
+  readWorkspaceDocument,
+  writeWorkspaceDocument,
+  compileWorkspaceTexDocument,
 });
