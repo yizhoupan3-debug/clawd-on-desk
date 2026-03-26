@@ -1,4 +1,4 @@
-const { app, BrowserWindow, screen, Menu, Tray, ipcMain, nativeImage, dialog, shell } = require("electron");
+const { app, BrowserWindow, screen, Menu, Tray, ipcMain, nativeImage, dialog, shell, clipboard } = require("electron");
 const http = require("http");
 const path = require("path");
 const fs = require("fs");
@@ -1231,8 +1231,8 @@ function createSessionsWindow() {
   sessionsWindowLastPayloadKey = "";
 
   sessionsWin = new BrowserWindow({
-    width: 320,
-    height: 450,
+    width: 460,
+    height: 560,
     show: false,
     frame: false,
     transparent: true,
@@ -1352,8 +1352,8 @@ function showSessionsWindow() {
   let y = cursor.y + 10;
   
   if (x < workArea.x) x = workArea.x + 10;
-  if (x + 320 > workArea.x + workArea.width) x = workArea.x + workArea.width - 330;
-  if (y + 450 > workArea.y + workArea.height) y = cursor.y - 460;
+  if (x + 460 > workArea.x + workArea.width) x = workArea.x + workArea.width - 470;
+  if (y + 560 > workArea.y + workArea.height) y = cursor.y - 570;
 
   win.setPosition(Math.round(x), Math.round(y));
   win.show();
@@ -1522,6 +1522,363 @@ function initFocusHelper() {
 
 function killFocusHelper() {
   if (psProc) { psProc.kill(); psProc = null; }
+}
+
+const WORKSPACE_CLIPBOARD_MODE_SET = new Set(["copy", "cut"]);
+let workspaceClipboardState = null;
+
+/**
+ * Check whether one candidate path stays inside the workspace root.
+ *
+ * @param {string} rootPath - Absolute workspace root path.
+ * @param {string} candidatePath - Absolute candidate path.
+ * @returns {boolean} True when the candidate stays inside the root.
+ */
+function isPathInsideWorkspace(rootPath, candidatePath) {
+  const relative = path.relative(rootPath, candidatePath);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+/**
+ * Resolve one workspace-relative path and enforce the workspace boundary.
+ *
+ * @param {{ cwd: string, relativePath?: string | null }} options - Workspace root and optional relative path.
+ * @returns {{ rootPath: string, targetPath: string, normalizedRelativePath: string }} Resolved absolute and normalized relative paths.
+ */
+function resolveWorkspacePath(options) {
+  const cwd = typeof options?.cwd === "string" ? options.cwd.trim() : "";
+  if (!cwd) {
+    throw new Error("Workspace path is required.");
+  }
+
+  const rootPath = path.resolve(cwd);
+  const rawRelativePath = typeof options?.relativePath === "string" ? options.relativePath.trim() : "";
+  const targetPath = path.resolve(rootPath, rawRelativePath || ".");
+  if (!isPathInsideWorkspace(rootPath, targetPath)) {
+    throw new Error("Workspace operation attempted to escape the root directory.");
+  }
+
+  const normalizedRelativePath = path.relative(rootPath, targetPath);
+  return {
+    rootPath,
+    targetPath,
+    normalizedRelativePath: normalizedRelativePath === "" ? "" : normalizedRelativePath,
+  };
+}
+
+/**
+ * Validate one filesystem entry name for create or rename operations.
+ *
+ * @param {string} name - Candidate entry name.
+ * @returns {string} Sanitized entry name.
+ */
+function normalizeWorkspaceEntryName(name) {
+  const normalized = typeof name === "string" ? name.trim() : "";
+  if (!normalized || normalized === "." || normalized === "..") {
+    throw new Error("A valid file or folder name is required.");
+  }
+  if (normalized.includes("/") || normalized.includes("\\")) {
+    throw new Error("Entry names cannot include path separators.");
+  }
+  return normalized;
+}
+
+/**
+ * Build a sorted directory listing for the workspace explorer.
+ *
+ * @param {{ cwd: string, relativePath?: string | null }} options - Workspace root and optional relative directory.
+ * @returns {{ cwd: string, relativePath: string, entries: Array<object> }} Directory listing payload.
+ */
+function listWorkspaceDirectory(options) {
+  const { rootPath, targetPath, normalizedRelativePath } = resolveWorkspacePath(options);
+  const stat = fs.statSync(targetPath);
+  if (!stat.isDirectory()) {
+    throw new Error("The selected path is not a directory.");
+  }
+
+  const entries = fs.readdirSync(targetPath, { withFileTypes: true })
+    .map((dirent) => {
+      const absolutePath = path.join(targetPath, dirent.name);
+      const entryStat = fs.statSync(absolutePath);
+      const isDirectory = entryStat.isDirectory();
+      const relativePath = path.relative(rootPath, absolutePath);
+      return {
+        name: dirent.name,
+        relativePath,
+        absolutePath,
+        kind: isDirectory ? "directory" : "file",
+      };
+    })
+    .sort((left, right) => {
+      if (left.kind !== right.kind) {
+        return left.kind === "directory" ? -1 : 1;
+      }
+      return left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: "base" });
+    });
+
+  return {
+    cwd: rootPath,
+    relativePath: normalizedRelativePath,
+    entries,
+  };
+}
+
+/**
+ * Create a unique destination path when the original name already exists.
+ *
+ * @param {{ directoryPath: string, entryName: string }} options - Target directory and original entry name.
+ * @returns {string} Unique absolute destination path.
+ */
+function buildUniqueWorkspaceDestinationPath(options) {
+  const directoryPath = options.directoryPath;
+  const entryName = options.entryName;
+  const parsed = path.parse(entryName);
+  const baseName = parsed.ext ? parsed.name : entryName;
+  const extension = parsed.ext || "";
+  let attempt = 0;
+
+  while (true) {
+    const candidateName = attempt === 0
+      ? `${baseName} copy${extension}`
+      : `${baseName} copy ${attempt + 1}${extension}`;
+    const candidatePath = path.join(directoryPath, candidateName);
+    if (!fs.existsSync(candidatePath)) {
+      return candidatePath;
+    }
+    attempt += 1;
+  }
+}
+
+/**
+ * Clear the in-memory workspace clipboard when the source no longer exists.
+ *
+ * @returns {void}
+ */
+function pruneWorkspaceClipboardState() {
+  if (!workspaceClipboardState) return;
+  if (!fs.existsSync(workspaceClipboardState.sourcePath)) {
+    workspaceClipboardState = null;
+  }
+}
+
+/**
+ * Return the current workspace clipboard metadata for the renderer.
+ *
+ * @returns {{ hasItem: boolean, mode: string | null, name: string | null }} Clipboard summary.
+ */
+function getWorkspaceClipboardState() {
+  pruneWorkspaceClipboardState();
+  return {
+    hasItem: !!workspaceClipboardState,
+    mode: workspaceClipboardState?.mode || null,
+    name: workspaceClipboardState?.entryName || null,
+  };
+}
+
+/**
+ * Copy or cut one workspace entry into the in-memory clipboard.
+ *
+ * @param {{ cwd: string, relativePath: string, mode: string }} options - Workspace root, entry path, and clipboard mode.
+ * @returns {{ mode: string, relativePath: string }} Clipboard state summary.
+ */
+function setWorkspaceClipboard(options) {
+  const mode = typeof options?.mode === "string" ? options.mode : "";
+  if (!WORKSPACE_CLIPBOARD_MODE_SET.has(mode)) {
+    throw new Error("Unsupported workspace clipboard mode.");
+  }
+
+  const { rootPath, targetPath, normalizedRelativePath } = resolveWorkspacePath(options);
+  if (!normalizedRelativePath) {
+    throw new Error("The workspace root itself cannot be copied or cut.");
+  }
+  if (!fs.existsSync(targetPath)) {
+    throw new Error("The selected entry no longer exists.");
+  }
+
+  workspaceClipboardState = {
+    mode,
+    sourceRootPath: rootPath,
+    sourcePath: targetPath,
+    sourceRelativePath: normalizedRelativePath,
+    entryName: path.basename(targetPath),
+  };
+
+  return {
+    mode,
+    relativePath: normalizedRelativePath,
+  };
+}
+
+/**
+ * Copy a workspace path string into the system clipboard.
+ *
+ * @param {{ cwd: string, relativePath: string, format: "absolute" | "relative" }} options - Workspace root, entry path, and copy format.
+ * @returns {{ text: string }} Copied text payload.
+ */
+function copyWorkspacePath(options) {
+  const format = options?.format === "relative" ? "relative" : "absolute";
+  const { targetPath, normalizedRelativePath } = resolveWorkspacePath(options);
+  const text = format === "relative" ? (normalizedRelativePath || ".") : targetPath;
+  clipboard.writeText(text);
+  return { text };
+}
+
+/**
+ * Create a file or folder inside the workspace tree.
+ *
+ * @param {{ cwd: string, parentRelativePath?: string | null, name: string, kind: "file" | "directory" }} options - Creation target and entry metadata.
+ * @returns {{ relativePath: string }} Newly created relative path.
+ */
+function createWorkspaceEntry(options) {
+  const kind = options?.kind === "directory" ? "directory" : "file";
+  const entryName = normalizeWorkspaceEntryName(options?.name || "");
+  const { rootPath, targetPath } = resolveWorkspacePath({
+    cwd: options?.cwd,
+    relativePath: options?.parentRelativePath,
+  });
+
+  if (!fs.existsSync(targetPath) || !fs.statSync(targetPath).isDirectory()) {
+    throw new Error("The selected parent folder no longer exists.");
+  }
+
+  const destinationPath = path.join(targetPath, entryName);
+  if (!isPathInsideWorkspace(rootPath, destinationPath)) {
+    throw new Error("The new entry would escape the workspace root.");
+  }
+  if (fs.existsSync(destinationPath)) {
+    throw new Error("A file or folder with the same name already exists.");
+  }
+
+  if (kind === "directory") {
+    fs.mkdirSync(destinationPath);
+  } else {
+    fs.writeFileSync(destinationPath, "", { flag: "wx" });
+  }
+
+  return {
+    relativePath: path.relative(rootPath, destinationPath),
+  };
+}
+
+/**
+ * Rename one workspace entry in place.
+ *
+ * @param {{ cwd: string, relativePath: string, nextName: string }} options - Workspace root, existing entry, and next basename.
+ * @returns {{ relativePath: string }} Renamed relative path.
+ */
+function renameWorkspaceEntry(options) {
+  const nextName = normalizeWorkspaceEntryName(options?.nextName || "");
+  const { rootPath, targetPath, normalizedRelativePath } = resolveWorkspacePath(options);
+  if (!normalizedRelativePath || !fs.existsSync(targetPath)) {
+    throw new Error("The selected entry no longer exists.");
+  }
+
+  const destinationPath = path.join(path.dirname(targetPath), nextName);
+  if (!isPathInsideWorkspace(rootPath, destinationPath)) {
+    throw new Error("The renamed entry would escape the workspace root.");
+  }
+  if (destinationPath === targetPath) {
+    return { relativePath: normalizedRelativePath };
+  }
+  if (fs.existsSync(destinationPath)) {
+    throw new Error("A file or folder with the same name already exists.");
+  }
+
+  fs.renameSync(targetPath, destinationPath);
+  if (workspaceClipboardState && workspaceClipboardState.sourcePath === targetPath) {
+    workspaceClipboardState.sourcePath = destinationPath;
+    workspaceClipboardState.sourceRelativePath = path.relative(rootPath, destinationPath);
+    workspaceClipboardState.entryName = path.basename(destinationPath);
+  }
+
+  return {
+    relativePath: path.relative(rootPath, destinationPath),
+  };
+}
+
+/**
+ * Delete one workspace entry from disk.
+ *
+ * @param {{ cwd: string, relativePath: string }} options - Workspace root and existing entry.
+ * @returns {{ deleted: true }} Deletion summary.
+ */
+function deleteWorkspaceEntry(options) {
+  const { targetPath, normalizedRelativePath } = resolveWorkspacePath(options);
+  if (!normalizedRelativePath || !fs.existsSync(targetPath)) {
+    throw new Error("The selected entry no longer exists.");
+  }
+
+  fs.rmSync(targetPath, { recursive: true, force: false });
+  pruneWorkspaceClipboardState();
+  return { deleted: true };
+}
+
+/**
+ * Paste the current workspace clipboard into a target folder or its parent.
+ *
+ * @param {{ cwd: string, targetRelativePath?: string | null }} options - Workspace root and optional paste target.
+ * @returns {{ relativePath: string, mode: string }} Pasted relative path and operation mode.
+ */
+function pasteWorkspaceClipboard(options) {
+  pruneWorkspaceClipboardState();
+  if (!workspaceClipboardState) {
+    throw new Error("There is nothing to paste.");
+  }
+
+  const { rootPath, targetPath, normalizedRelativePath } = resolveWorkspacePath({
+    cwd: options?.cwd,
+    relativePath: options?.targetRelativePath,
+  });
+  const targetExists = fs.existsSync(targetPath);
+  const targetDirectoryPath = !normalizedRelativePath
+    ? targetPath
+    : (targetExists && fs.statSync(targetPath).isDirectory() ? targetPath : path.dirname(targetPath));
+  if (!fs.existsSync(targetDirectoryPath) || !fs.statSync(targetDirectoryPath).isDirectory()) {
+    throw new Error("The paste destination is unavailable.");
+  }
+
+  if (
+    workspaceClipboardState.mode === "cut"
+    && workspaceClipboardState.sourcePath === targetDirectoryPath
+  ) {
+    throw new Error("The destination already matches the selected folder.");
+  }
+
+  if (
+    fs.existsSync(workspaceClipboardState.sourcePath)
+    && fs.statSync(workspaceClipboardState.sourcePath).isDirectory()
+    && isPathInsideWorkspace(workspaceClipboardState.sourcePath, targetDirectoryPath)
+  ) {
+    throw new Error("A folder cannot be pasted into itself or its own descendants.");
+  }
+
+  let destinationPath = path.join(targetDirectoryPath, workspaceClipboardState.entryName);
+  if (fs.existsSync(destinationPath)) {
+    destinationPath = buildUniqueWorkspaceDestinationPath({
+      directoryPath: targetDirectoryPath,
+      entryName: workspaceClipboardState.entryName,
+    });
+  }
+
+  if (workspaceClipboardState.mode === "copy") {
+    fs.cpSync(workspaceClipboardState.sourcePath, destinationPath, { recursive: true, errorOnExist: false });
+  } else {
+    try {
+      fs.renameSync(workspaceClipboardState.sourcePath, destinationPath);
+    } catch (error) {
+      if (error?.code !== "EXDEV") {
+        throw error;
+      }
+      fs.cpSync(workspaceClipboardState.sourcePath, destinationPath, { recursive: true, errorOnExist: false });
+      fs.rmSync(workspaceClipboardState.sourcePath, { recursive: true, force: false });
+    }
+    workspaceClipboardState = null;
+  }
+
+  return {
+    relativePath: path.relative(rootPath, destinationPath),
+    mode: workspaceClipboardState?.mode || "cut",
+  };
 }
 
 function focusTerminalWindow(sourcePid, cwd, editor, pidChain) {
@@ -2631,6 +2988,38 @@ function createWindow() {
 
   ipcMain.on("hide-sessions", () => {
     if (sessionsWin) sessionsWin.hide();
+  });
+
+  ipcMain.handle("workspace-tree:list", async (event, options) => {
+    return listWorkspaceDirectory(options);
+  });
+
+  ipcMain.handle("workspace-tree:create", async (event, options) => {
+    return createWorkspaceEntry(options);
+  });
+
+  ipcMain.handle("workspace-tree:rename", async (event, options) => {
+    return renameWorkspaceEntry(options);
+  });
+
+  ipcMain.handle("workspace-tree:delete", async (event, options) => {
+    return deleteWorkspaceEntry(options);
+  });
+
+  ipcMain.handle("workspace-tree:clipboard:set", async (event, options) => {
+    return setWorkspaceClipboard(options);
+  });
+
+  ipcMain.handle("workspace-tree:clipboard:get", async () => {
+    return getWorkspaceClipboardState();
+  });
+
+  ipcMain.handle("workspace-tree:clipboard:paste", async (event, options) => {
+    return pasteWorkspaceClipboard(options);
+  });
+
+  ipcMain.handle("workspace-tree:path:copy", async (event, options) => {
+    return copyWorkspacePath(options);
   });
 
   ipcMain.on("close-workspace", (event, cwd) => {
