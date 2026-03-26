@@ -68,63 +68,82 @@ function getStablePid() {
   const terminalNames = isWin ? TERMINAL_NAMES_WIN : TERMINAL_NAMES_MAC;
   const systemBoundary = isWin ? SYSTEM_BOUNDARY_WIN : SYSTEM_BOUNDARY_MAC;
   const editorMap = isWin ? EDITOR_MAP_WIN : EDITOR_MAP_MAC;
-  let pid = process.ppid;
-  let lastGoodPid = pid;
-  let terminalPid = null;
+  const claudeNames = isWin ? CLAUDE_NAMES_WIN : CLAUDE_NAMES_MAC;
+
+  const processMap = new Map(); // pid -> { ppid, name, comm }
   _pidChain = [];
   _detectedEditor = null;
   _claudePid = null;
-  const claudeNames = isWin ? CLAUDE_NAMES_WIN : CLAUDE_NAMES_MAC;
-  for (let i = 0; i < 8; i++) {
-    let name, parentPid;
-    try {
-      if (isWin) {
-        const out = execSync(
-          `wmic process where "ProcessId=${pid}" get Name,ParentProcessId /format:csv`,
-          { encoding: "utf8", timeout: 1500, windowsHide: true }
-        );
-        const lines = out.trim().split("\n").filter(l => l.includes(","));
-        if (!lines.length) break;
-        const parts = lines[lines.length - 1].split(",");
-        name = (parts[1] || "").trim().toLowerCase();
-        parentPid = parseInt(parts[2], 10);
-      } else {
-        const cp = require("child_process");
-        const ppidOut = cp.execSync(`ps -o ppid= -p ${pid}`, { encoding: "utf8", timeout: 1000 }).trim();
-        const commOut = cp.execSync(`ps -o comm= -p ${pid}`, { encoding: "utf8", timeout: 1000 }).trim();
-        name = require("path").basename(commOut).toLowerCase();
-        // macOS: VS Code binary is "Electron" — check full comm path for editor detection
-        if (!_detectedEditor) {
-          const fullLower = commOut.toLowerCase();
-          if (fullLower.includes("visual studio code")) _detectedEditor = "code";
-          else if (fullLower.includes("cursor.app")) _detectedEditor = "cursor";
-        }
-        parentPid = parseInt(ppidOut, 10);
+
+  try {
+    if (isWin) {
+      const out = execSync(
+        `wmic process get ProcessId,ParentProcessId,Name /format:csv`,
+        { encoding: "utf8", timeout: 2000, windowsHide: true }
+      );
+      const lines = out.trim().split("\n");
+      for (const line of lines) {
+        const parts = line.split(",");
+        if (parts.length < 4) continue;
+        const pid = parseInt(parts[parts.length - 2], 10);
+        const ppid = parseInt(parts[parts.length - 3], 10);
+        const name = (parts[parts.length - 1] || "").trim().toLowerCase();
+        if (!isNaN(pid) && !isNaN(ppid)) processMap.set(pid, { ppid, name, comm: name });
       }
-    } catch { break; }
+    } else {
+      const out = execSync(`ps -ax -o pid=,ppid=,comm=`, { encoding: "utf8", timeout: 2000 });
+      const lines = out.trim().split("\n");
+      for (const line of lines) {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length < 3) continue;
+        const pid = parseInt(parts[0], 10);
+        const ppid = parseInt(parts[1], 10);
+        const comm = parts.slice(2).join(" "); // handle spaces in command path
+        const name = require("path").basename(comm).toLowerCase();
+        if (!isNaN(pid) && !isNaN(ppid)) processMap.set(pid, { ppid, name, comm });
+      }
+    }
+  } catch (e) {
+    _stablePid = process.ppid;
+    return _stablePid;
+  }
+
+  let pid = process.ppid;
+  let lastGoodPid = pid;
+  let terminalPid = null;
+
+  for (let i = 0; i < 10; i++) {
+    const info = processMap.get(pid);
+    if (!info) break;
     _pidChain.push(pid);
-    if (!_detectedEditor && editorMap[name]) _detectedEditor = editorMap[name];
-    // Claude Code detection: direct binary match, or node.exe running claude-code
+    const { ppid, name, comm } = info;
+
+    // Detected Editor detection
+    if (!_detectedEditor) {
+      if (editorMap[name]) _detectedEditor = editorMap[name];
+      else {
+        const fullLower = comm.toLowerCase();
+        if (fullLower.includes("visual studio code")) _detectedEditor = "code";
+        else if (fullLower.includes("cursor.app")) _detectedEditor = "cursor";
+      }
+    }
+
+    // Claude Code detection
     if (!_claudePid) {
       if (claudeNames.has(name)) {
         _claudePid = pid;
       } else if (name === "node.exe" || name === "node") {
-        try {
-          const cmdOut = isWin
-            ? execSync(`wmic process where "ProcessId=${pid}" get CommandLine /format:csv`,
-                { encoding: "utf8", timeout: 500, windowsHide: true })
-            : execSync(`ps -o command= -p ${pid}`, { encoding: "utf8", timeout: 500 });
-          if (cmdOut.includes("claude-code") || cmdOut.includes("@anthropic-ai")) _claudePid = pid;
-        } catch {}
+        if (comm.includes("claude-code") || comm.includes("@anthropic-ai")) _claudePid = pid;
       }
     }
+
     if (systemBoundary.has(name)) break;
     if (terminalNames.has(name)) terminalPid = pid;
     lastGoodPid = pid;
-    if (!parentPid || parentPid === pid || parentPid <= 1) break;
-    pid = parentPid;
+    if (!ppid || ppid === pid || ppid <= 1) break;
+    pid = ppid;
   }
-  // Prefer outermost known terminal; fall back to highest non-system PID
+
   _stablePid = terminalPid || lastGoodPid;
   return _stablePid;
 }

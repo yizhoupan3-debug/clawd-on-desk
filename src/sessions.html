@@ -1,0 +1,1499 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    :root {
+      --bg: rgba(20, 20, 20, 0.95);
+      --text: #e0e0e0;
+      --text-dim: #a0a0a0;
+      --accent: #58a6ff;
+      --danger: #f85149;
+      --hover: rgba(255, 255, 255, 0.08);
+      --border: rgba(255, 255, 255, 0.1);
+      --bg-gradient: linear-gradient(145deg, rgba(30,30,30,0.98), rgba(15,15,15,0.95));
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: transparent;
+      color: var(--text);
+      font-size: 13px;
+      overflow: hidden;
+      overscroll-behavior: none;
+    }
+
+    #container {
+      width: 100%;
+      height: 100vh;
+      background: var(--bg-gradient);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5), inset 0 1px 1px rgba(255,255,255,0.1);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      backdrop-filter: blur(20px);
+      animation: slideIn 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    @keyframes slideIn {
+      from { transform: translateY(10px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    #header {
+      padding: 14px 16px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(255,255,255,0.02);
+      text-transform: uppercase;
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+
+    #workspace-list {
+      flex: 1;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding: 8px 0;
+    }
+
+    #workspace-list::-webkit-scrollbar {
+      width: 4px;
+    }
+    #workspace-list::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.2);
+      border-radius: 2px;
+    }
+
+    .workspace-row {
+      padding: 10px 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      transition: all 0.2s ease;
+      position: relative;
+    }
+
+    .workspace-row:hover {
+      background: var(--hover);
+    }
+
+    .folder-icon {
+      width: 16px;
+      height: 16px;
+      margin-right: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+      color: var(--accent);
+    }
+
+    /* Transition folder to arrow on hover */
+    .workspace-row:hover .folder-icon svg .folder-path {
+      display: none;
+    }
+    .workspace-row:hover .folder-icon svg .arrow-path {
+      display: block;
+    }
+
+    .folder-path, .arrow-path {
+      transition: opacity 0.2s ease;
+    }
+
+    .arrow-path {
+      display: none;
+      opacity: 0;
+    }
+
+    .workspace-row:hover .folder-icon .folder-path {
+      display: none;
+    }
+    .workspace-row:hover .folder-icon .arrow-path {
+      display: block;
+      opacity: 1;
+    }
+
+    .workspace-name {
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-weight: 500;
+      font-size: 14px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+
+    .workspace-row:hover .actions {
+      opacity: 1;
+    }
+
+    .action-btn {
+      width: 26px;
+      height: 26px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      color: var(--text-dim);
+      transition: all 0.2s ease;
+    }
+
+    .action-btn:hover {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+      transform: translateY(-1px);
+    }
+
+    .action-btn.close:hover {
+      background: var(--danger);
+      border-color: var(--danger);
+    }
+
+    .threads-container {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      background: rgba(0,0,0,0.15);
+    }
+
+    .threads-container.expanded {
+      max-height: 1000px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .task-card {
+      margin: 10px 12px 10px 42px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.012)),
+        rgba(20, 20, 20, 0.94);
+      box-shadow:
+        0 14px 32px rgba(0, 0, 0, 0.28),
+        inset 0 1px 0 rgba(255,255,255,0.04);
+      overflow: hidden;
+    }
+
+    .task-card.walkthrough {
+      border-color: rgba(88, 166, 255, 0.18);
+    }
+
+    .task-card.progress {
+      border-color: rgba(255,255,255,0.1);
+    }
+
+    .task-card-hero {
+      padding: 18px 18px 16px;
+    }
+
+    .task-card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .task-badge {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.9px;
+      color: rgba(224,224,224,0.5);
+    }
+
+    .task-card-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.3;
+      letter-spacing: -0.02em;
+      margin-bottom: 10px;
+    }
+
+    .task-card-subtitle {
+      font-size: 13px;
+      line-height: 1.6;
+      color: rgba(224,224,224,0.92);
+    }
+
+    .task-hero-meta {
+      margin-top: 10px;
+      font-size: 11px;
+      line-height: 1.55;
+      color: rgba(224,224,224,0.58);
+    }
+
+    .task-section {
+      padding: 13px 18px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .task-section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .task-section-title {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: rgba(224,224,224,0.5);
+    }
+
+    .task-section-action {
+      font-size: 11px;
+      color: rgba(224,224,224,0.5);
+    }
+
+    .task-process-lane,
+    .task-meta-line,
+    .task-rich-paragraph {
+      font-size: 11px;
+      line-height: 1.6;
+      color: rgba(224,224,224,0.68);
+    }
+
+    .task-process-lane code,
+    .task-meta-line code,
+    .task-inline-code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.09);
+    }
+
+    .task-rich-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .task-rich-subheading {
+      font-size: 12px;
+      font-weight: 700;
+      color: rgba(255,255,255,0.92);
+      margin-bottom: 2px;
+    }
+
+    .task-rich-alert {
+      border-left: 4px solid #f28c3a;
+      border-radius: 14px;
+      padding: 14px 16px;
+      background: rgba(108, 57, 30, 0.55);
+      color: rgba(255,255,255,0.88);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+    }
+
+    .task-rich-alert-note {
+      border-left-color: #f28c3a;
+    }
+
+    .task-rich-alert-important {
+      border-left-color: #f28c3a;
+      background: rgba(122, 64, 32, 0.62);
+    }
+
+    .task-rich-alert-warning,
+    .task-rich-alert-caution {
+      border-left-color: #ffb347;
+    }
+
+    .task-rich-alert-tip {
+      border-left-color: #4fb477;
+    }
+
+    .task-rich-alert-title {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.76);
+      margin-bottom: 6px;
+    }
+
+    .task-rich-code {
+      margin: 0;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: rgba(0,0,0,0.24);
+      color: rgba(255,255,255,0.88);
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 11px;
+      line-height: 1.55;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .task-rich-list,
+    .task-progress-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .task-rich-list-item,
+    .task-progress-item {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      font-size: 12px;
+      line-height: 1.48;
+      color: rgba(224,224,224,0.96);
+    }
+
+    .task-progress-item {
+      padding: 0;
+      font-weight: 600;
+    }
+
+    .task-rich-list-item-text,
+    .task-progress-text {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .task-progress-content {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding-top: 1px;
+    }
+
+    .task-rich-marker,
+    .task-progress-marker {
+      width: 20px;
+      min-width: 20px;
+      height: 20px;
+      border-radius: 7px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 800;
+      line-height: 1;
+      margin-top: 1px;
+    }
+
+    .task-progress-marker,
+    .task-rich-marker-check.is-checked {
+      background: #f28c3a;
+      color: #24150a;
+      box-shadow: 0 4px 12px rgba(242, 140, 58, 0.22);
+    }
+
+    .task-progress-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      width: fit-content;
+      max-width: 100%;
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: rgba(34, 34, 34, 0.96);
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.03),
+        0 10px 20px rgba(0,0,0,0.18);
+      color: rgba(236,236,236,0.92);
+      overflow: hidden;
+    }
+
+    .task-progress-pill-kind {
+      color: rgba(255,255,255,0.58);
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      flex: 0 0 auto;
+    }
+
+    .task-progress-pill-target {
+      min-width: 0;
+      color: rgba(255,255,255,0.96);
+      font-weight: 700;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .task-progress-pill-ref {
+      flex: 0 0 auto;
+      color: rgba(255,255,255,0.55);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+    }
+
+    .task-progress-pill-stats {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      flex: 0 0 auto;
+      padding-left: 2px;
+      margin-left: 2px;
+      border-left: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .task-progress-pill-stat {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.01em;
+    }
+
+    .task-progress-pill-stat.is-plus {
+      color: #4de18a;
+    }
+
+    .task-progress-pill-stat.is-minus {
+      color: #ff7f7f;
+    }
+
+    .task-rich-marker-check {
+      border: 1px solid rgba(255,255,255,0.18);
+      color: rgba(255,255,255,0.22);
+      background: transparent;
+    }
+
+    .task-rich-marker-order {
+      background: rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.82);
+      border-radius: 999px;
+    }
+
+    .task-rich-marker-bullet {
+      width: 8px;
+      min-width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      margin: 7px 7px 0;
+      background: rgba(255,255,255,0.34);
+    }
+
+    .task-card-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 6px;
+    }
+
+    .task-expand-btn {
+      border: 0;
+      background: transparent;
+      color: rgba(224,224,224,0.68);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 0;
+    }
+
+    .task-expand-btn:hover {
+      color: #ffffff;
+    }
+
+    .task-overflow-hint {
+      font-size: 10px;
+      color: rgba(224,224,224,0.48);
+    }
+
+    .thread-item {
+      padding: 8px 16px 8px 42px;
+      display: flex;
+      align-items: center;
+      font-size: 12px;
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border-left: 2px solid transparent;
+    }
+
+    .thread-item:hover {
+      background: var(--hover);
+      color: var(--text);
+      border-left-color: var(--accent);
+    }
+
+    .thread-item.active {
+      background: rgba(88, 166, 255, 0.12);
+      color: var(--text);
+      border-left-color: var(--accent);
+    }
+
+    .agent-icon {
+      width: 14px;
+      height: 14px;
+      margin-right: 10px;
+      opacity: 0.7;
+    }
+
+    .thread-info {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .thread-id {
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .thread-status {
+      font-size: 10px;
+      opacity: 0.6;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      margin-right: 8px;
+      background: #888;
+      box-shadow: 0 0 8px rgba(0,0,0,0.5);
+    }
+
+    .status-dot.working { background: #3fb950; box-shadow: 0 0 8px rgba(63, 185, 80, 0.4); }
+    .status-dot.thinking { background: var(--accent); box-shadow: 0 0 8px rgba(88, 166, 255, 0.4); }
+    .status-dot.error { background: var(--danger); box-shadow: 0 0 8px rgba(248, 81, 73, 0.4); }
+
+    .empty-hint {
+      padding: 40px 20px;
+      text-align: center;
+      color: var(--text-dim);
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <div id="header">
+      <span>Workspaces</span>
+      <div id="close-sessions" style="cursor:pointer; opacity:0.6; font-size: 18px;">&times;</div>
+    </div>
+    <div id="workspace-list">
+      <div class="empty-hint">No active workspaces</div>
+    </div>
+  </div>
+
+  <script>
+    const listEl = document.getElementById('workspace-list');
+    let expandedWorkspaceCwd = null;
+    let latestPayload = { entries: [], focusedSessionId: null, workspaceTaskViews: {} };
+    let shouldAutoExpandWorkspace = true;
+    let lastRenderKey = '';
+    let renderQueued = false;
+    let workspaceNodeMap = new Map();
+    const UNASSIGNED_WORKSPACE_KEY = '__clawd_unassigned__';
+    const WORKSPACE_ICON = `
+      <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+        <path class="folder-path" d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3h-6.5l-1.5-2H1.75Z"/>
+        <path class="arrow-path" d="M4.47 6.22a.75.75 0 0 1 1.06 0L8 8.69l2.47-2.47a.75.75 0 1 1 1.06 1.06l-3 3a.75.75 0 0 1-1.06 0l-3-3a.75.75 0 0 1 0-1.06Z"/>
+      </svg>
+    `;
+    const CLOSE_ICON = `<svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M14.53 15.59a.75.75 0 0 1-1.06 0L8 10.12 2.53 15.59a.75.75 0 1 1-1.06-1.06L6.94 9.06 1.47 3.59a.75.75 0 0 1 1.06-1.06L8 8 13.47 2.53a.75.75 0 0 1 1.06 1.06L9.06 9.06l5.47 5.47a.75.75 0 0 1 0 1.06Z"/></svg>`;
+    const NEW_THREAD_ICON = `<svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M7.75 2a.75.75 0 0 1 .75.75V7h4.25a.75.75 0 0 1 0 1.5H8.5v4.25a.75.75 0 0 1-1.5 0V8.5H2.75a.75.75 0 0 1 0-1.5H7V2.75A.75.75 0 0 1 7.75 2Z"/></svg>`;
+    
+    const AGENT_ICONS = {
+      claude: `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0ZM4.5 5.5a1 1 0 1 1 2 0 1 1 0 0 1-2 0ZM7.5 5.5a1 1 0 1 1 2 0 1 1 0 0 1-2 0ZM11.5 5.5a1 1 0 1 1 2 0 1 1 0 0 1-2 0ZM8 12a4 4 0 0 1-3.5-2h7A4 4 0 0 1 8 12Z"/></svg>`,
+      codex: `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M0 2.75C0 1.784.784 1 1.75 1h12.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0 1 14.25 15H1.75A1.75 1.75 0 0 1 0 13.25V2.75Zm1.75-.25a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V2.75a.25.25 0 0 0-.25-.25H1.75ZM7.25 8h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1 0-1.5ZM6 4.75A.75.75 0 0 1 6.75 4h2.5a.75.75 0 0 1 0 1.5h-2.5A.75.75 0 0 1 6 4.75Z"/></svg>`,
+      default: `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm2 1H6a3 3 0 0 0-3 3v1h10v-1a3 3 0 0 0-3-3Z"/></svg>`
+    };
+
+    /**
+     * Normalize the IPC payload into the renderer shape.
+     *
+     * @param {Array<object> | { entries?: Array<object>, focusedSessionId?: string | null } | null | undefined} payload
+     * @returns {{ entries: Array<object>, focusedSessionId: string | null, workspaceTaskViews: Record<string, object> }}
+     */
+    function normalizePayload(payload) {
+      if (Array.isArray(payload)) {
+        return { entries: payload, focusedSessionId: null, workspaceTaskViews: {} };
+      }
+
+      return {
+        entries: Array.isArray(payload?.entries) ? payload.entries : [],
+        focusedSessionId: payload?.focusedSessionId ?? null,
+        workspaceTaskViews: payload?.workspaceTaskViews && typeof payload.workspaceTaskViews === 'object'
+          ? payload.workspaceTaskViews
+          : {}
+      };
+    }
+
+    /**
+     * Build a stable render key so repeated payloads do not trigger extra DOM work.
+     *
+     * @param {{ entries: Array<object>, focusedSessionId: string | null, workspaceTaskViews: Record<string, object> }} payload
+     * @returns {string}
+     */
+    function buildPayloadKey(payload) {
+      const workspaceTaskViewEntries = Object.entries(payload.workspaceTaskViews || {})
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([cwd, view]) => [cwd, view && typeof view.renderKey === 'string' ? view.renderKey : JSON.stringify(view)]);
+
+      return [
+        payload.focusedSessionId || '',
+        ...payload.entries.map((entry) => [
+          entry.id,
+          entry.state,
+          entry.updatedAt,
+          entry.cwd,
+          entry.workspaceKey || '',
+          entry.agentId || '',
+          entry.lastEvent || '',
+          entry.isStatic ? 1 : 0,
+          entry.isActive ? 1 : 0,
+          entry.isFocused ? 1 : 0
+        ].join('~')),
+        JSON.stringify(workspaceTaskViewEntries)
+      ].join('||');
+    }
+
+    /**
+     * Apply the current expanded workspace state without rebuilding the full list.
+     *
+     * @returns {void}
+     */
+    function applyExpandedWorkspaceState() {
+      workspaceNodeMap.forEach(({ row, threadsContainer }, cwd) => {
+        const isExpanded = cwd === expandedWorkspaceCwd;
+        row.classList.toggle('expanded', isExpanded);
+        threadsContainer.classList.toggle('expanded', isExpanded);
+      });
+    }
+
+    /**
+     * Expand or collapse a workspace using the existing DOM nodes.
+     *
+     * @param {string | null} nextCwd
+     * @param {{ manual?: boolean }} [options]
+     * @returns {void}
+     */
+    function setExpandedWorkspace(nextCwd, options = {}) {
+      expandedWorkspaceCwd = nextCwd;
+      if (options.manual) {
+        shouldAutoExpandWorkspace = false;
+      }
+      applyExpandedWorkspaceState();
+    }
+
+    /**
+     * Build a DOM node from trusted inline SVG markup.
+     *
+     * @param {string} markup
+     * @param {string} [className]
+     * @returns {HTMLDivElement}
+     */
+    function createIconNode(markup, className = '') {
+      const icon = document.createElement('div');
+      if (className) icon.className = className;
+      icon.innerHTML = markup;
+      return icon;
+    }
+
+    /**
+     * Create a safe action button without inline event handlers.
+     *
+     * @param {string} title
+     * @param {string} iconMarkup
+     * @param {string} [className]
+     * @returns {HTMLDivElement}
+     */
+    function createActionButton(title, iconMarkup, className = '') {
+      const button = document.createElement('div');
+      button.className = ['action-btn', className].filter(Boolean).join(' ');
+      button.title = title;
+      button.innerHTML = iconMarkup;
+      return button;
+    }
+
+    /**
+     * Render the empty-state placeholder.
+     *
+     * @returns {void}
+     */
+    function renderEmptyState() {
+      const empty = document.createElement('div');
+      empty.className = 'empty-hint';
+      empty.textContent = 'No active workspaces';
+      listEl.replaceChildren(empty);
+    }
+
+    /**
+     * Create the persistent node bundle for a workspace row.
+     *
+     * @returns {{row: HTMLDivElement, threadsContainer: HTMLDivElement, workspaceNameEl: HTMLDivElement, activeBadgeEl: HTMLSpanElement, actions: HTMLDivElement, threadRenderKey: string, progressExpanded: boolean}}
+     */
+    function createWorkspaceNodes() {
+      const row = document.createElement('div');
+      row.className = 'workspace-row';
+
+      const folderIcon = createIconNode(WORKSPACE_ICON, 'folder-icon');
+      const workspaceNameEl = document.createElement('div');
+      workspaceNameEl.className = 'workspace-name';
+      const nameText = document.createElement('span');
+      const activeBadgeEl = document.createElement('span');
+      activeBadgeEl.style.cssText = 'font-size:9px; background: var(--accent); color: white; padding: 1px 4px; border-radius: 3px; margin-left: 6px; vertical-align: middle; opacity: 0.8;';
+      activeBadgeEl.textContent = 'ACTIVE';
+      activeBadgeEl.hidden = true;
+      workspaceNameEl.append(nameText, activeBadgeEl);
+
+      const actions = document.createElement('div');
+      actions.className = 'actions';
+      const closeBtn = createActionButton('Close Workspace', CLOSE_ICON, 'close');
+      const newThreadBtn = createActionButton('New Thread', NEW_THREAD_ICON);
+      actions.append(closeBtn, newThreadBtn);
+
+      row.append(folderIcon, workspaceNameEl, actions);
+
+      const threadsContainer = document.createElement('div');
+      threadsContainer.className = 'threads-container';
+
+      return {
+        row,
+        threadsContainer,
+        workspaceNameEl,
+        activeBadgeEl,
+        actions,
+        nameText,
+        closeBtn,
+        newThreadBtn,
+        threadRenderKey: '',
+        progressExpanded: false
+      };
+    }
+
+    /**
+     * Build a stable key for one workspace task card.
+     *
+     * @param {object | null | undefined} taskView
+     * @param {boolean} progressExpanded
+     * @returns {string}
+     */
+    function buildTaskRenderKey(taskView, progressExpanded) {
+      return JSON.stringify({ taskView: taskView || null, progressExpanded });
+    }
+
+    /**
+     * Append lightweight inline markdown into a container.
+     *
+     * @param {HTMLElement} container
+     * @param {string} value
+     * @returns {void}
+     */
+    function appendInlineMarkdown(container, value) {
+      const text = String(value || '');
+      const tokenPattern = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g;
+      let lastIndex = 0;
+      let match;
+
+      while ((match = tokenPattern.exec(text)) !== null) {
+        if (match.index > lastIndex) {
+          container.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+        }
+
+        const token = match[0];
+        let node;
+        if (token.startsWith('`')) {
+          node = document.createElement('code');
+          node.className = 'task-inline-code';
+          node.textContent = token.slice(1, -1);
+        } else if (token.startsWith('**')) {
+          node = document.createElement('strong');
+          node.textContent = token.slice(2, -2);
+        } else {
+          node = document.createElement('em');
+          node.textContent = token.slice(1, -1);
+        }
+
+        container.appendChild(node);
+        lastIndex = match.index + token.length;
+      }
+
+      if (lastIndex < text.length) {
+        container.appendChild(document.createTextNode(text.slice(lastIndex)));
+      }
+    }
+
+    /**
+     * Detect compact file-change progress text and extract pill metadata.
+     *
+     * @param {string} value
+     * @returns {{ kind: string, target: string, ref: string, stats: string[] } | null}
+     */
+    function parseProgressChangeMeta(value) {
+      const text = String(value || '').trim();
+      const kindMatch = text.match(/^(Edited|Analyzed|Created|Updated|Removed|Patched|Changed)\s+(.+)$/i);
+      if (!kindMatch) return null;
+
+      const kind = kindMatch[1].trim();
+      let remainder = kindMatch[2].trim();
+      const stats = remainder.match(/[+-]\d+/g) || [];
+      remainder = remainder.replace(/[+-]\d+/g, '').trim();
+
+      let ref = '';
+      const refMatch = remainder.match(/(#L\d+(?:-\d+)?)$/i);
+      if (refMatch) {
+        ref = refMatch[1].trim();
+        remainder = remainder.slice(0, -ref.length).trim();
+      }
+
+      if (!remainder) return null;
+
+      return {
+        kind,
+        target: remainder,
+        ref,
+        stats,
+      };
+    }
+
+    /**
+     * Build a compact pill for file-change style progress updates.
+     *
+     * @param {{ kind: string, target: string, ref: string, stats: string[] }} meta
+     * @returns {HTMLDivElement}
+     */
+    function createProgressChangePill(meta) {
+      const pill = document.createElement('div');
+      pill.className = 'task-progress-pill';
+
+      const kind = document.createElement('span');
+      kind.className = 'task-progress-pill-kind';
+      kind.textContent = meta.kind;
+      pill.appendChild(kind);
+
+      const target = document.createElement('code');
+      target.className = 'task-progress-pill-target';
+      target.textContent = meta.target;
+      pill.appendChild(target);
+
+      if (meta.ref) {
+        const ref = document.createElement('span');
+        ref.className = 'task-progress-pill-ref';
+        ref.textContent = meta.ref;
+        pill.appendChild(ref);
+      }
+
+      if (Array.isArray(meta.stats) && meta.stats.length > 0) {
+        const stats = document.createElement('span');
+        stats.className = 'task-progress-pill-stats';
+        meta.stats.forEach((stat) => {
+          const value = document.createElement('span');
+          value.className = `task-progress-pill-stat ${stat.startsWith('-') ? 'is-minus' : 'is-plus'}`;
+          value.textContent = stat;
+          stats.appendChild(value);
+        });
+        pill.appendChild(stats);
+      }
+
+      return pill;
+    }
+
+    /**
+     * Render a progress row with compact fallback layout.
+     *
+     * @param {string} value
+     * @param {number} index
+     * @returns {HTMLDivElement}
+     */
+    function renderProgressItem(value, index) {
+      const row = document.createElement('div');
+      row.className = 'task-progress-item';
+      row.appendChild(createTaskMarker('progress', index));
+
+      const meta = parseProgressChangeMeta(value);
+      if (meta) {
+        row.appendChild(createProgressChangePill(meta));
+        return row;
+      }
+
+      const content = document.createElement('div');
+      content.className = 'task-progress-content';
+
+      const text = document.createElement('div');
+      text.className = 'task-progress-text';
+      appendInlineMarkdown(text, value);
+      content.appendChild(text);
+
+      row.appendChild(content);
+      return row;
+    }
+
+    /**
+     * Create one simple text row with inline markdown support.
+     *
+     * @param {string} className
+     * @param {string} value
+     * @returns {HTMLDivElement}
+     */
+    function createMarkdownTextRow(className, value) {
+      const line = document.createElement('div');
+      line.className = className;
+      appendInlineMarkdown(line, value);
+      return line;
+    }
+
+    /**
+     * Create one marker node for a task list item.
+     *
+     * @param {'checklist' | 'ordered' | 'unordered' | 'progress'} style
+     * @param {number} index
+     * @param {boolean} checked
+     * @returns {HTMLDivElement}
+     */
+    function createTaskMarker(style, index = 0, checked = false) {
+      const marker = document.createElement('div');
+
+      if (style === 'progress') {
+        marker.className = 'task-progress-marker';
+        marker.textContent = String(index + 1);
+        return marker;
+      }
+
+      if (style === 'checklist') {
+        marker.className = `task-rich-marker task-rich-marker-check${checked ? ' is-checked' : ''}`;
+        marker.textContent = checked ? '✓' : '';
+        return marker;
+      }
+
+      if (style === 'ordered') {
+        marker.className = 'task-rich-marker task-rich-marker-order';
+        marker.textContent = String(index + 1);
+        return marker;
+      }
+
+      marker.className = 'task-rich-marker-bullet';
+      return marker;
+    }
+
+    /**
+     * Render one structured markdown list block.
+     *
+     * @param {object} block
+     * @returns {HTMLDivElement}
+     */
+    function renderMarkdownListBlock(block) {
+      const list = document.createElement('div');
+      list.className = 'task-rich-list';
+
+      block.items.forEach((item, index) => {
+        const row = document.createElement('div');
+        row.className = 'task-rich-list-item';
+        row.appendChild(createTaskMarker(block.style, index, !!item.checked));
+
+        const text = document.createElement('div');
+        text.className = 'task-rich-list-item-text';
+        appendInlineMarkdown(text, item.text || item.value || '');
+        row.appendChild(text);
+        list.appendChild(row);
+      });
+
+      return list;
+    }
+
+    /**
+     * Render one structured markdown block.
+     *
+     * @param {object} block
+     * @returns {HTMLElement}
+     */
+    function renderMarkdownBlock(block) {
+      if (block.type === 'alert') {
+        const alert = document.createElement('div');
+        alert.className = `task-rich-alert task-rich-alert-${block.level}`;
+
+        const title = document.createElement('div');
+        title.className = 'task-rich-alert-title';
+        title.textContent = `[!${block.title}]`;
+        alert.appendChild(title);
+
+        const body = document.createElement('div');
+        body.className = 'task-rich-paragraph';
+        appendInlineMarkdown(body, block.text || '');
+        alert.appendChild(body);
+        return alert;
+      }
+
+      if (block.type === 'subheading') {
+        return createMarkdownTextRow('task-rich-subheading', block.text || '');
+      }
+
+      if (block.type === 'code') {
+        const pre = document.createElement('pre');
+        pre.className = 'task-rich-code';
+        pre.textContent = block.text || '';
+        return pre;
+      }
+
+      if (block.type === 'list') {
+        return renderMarkdownListBlock(block);
+      }
+
+      return createMarkdownTextRow('task-rich-paragraph', block.text || '');
+    }
+
+    /**
+     * Render a block stack into a target container.
+     *
+     * @param {HTMLElement} container
+     * @param {Array<object>} blocks
+     * @returns {void}
+     */
+    function appendMarkdownBlocks(container, blocks) {
+      if (!Array.isArray(blocks) || blocks.length === 0) return;
+      const stack = document.createElement('div');
+      stack.className = 'task-rich-stack';
+      blocks.forEach((block) => stack.appendChild(renderMarkdownBlock(block)));
+      container.appendChild(stack);
+    }
+
+    /**
+     * Create one task section with a header and body container.
+     *
+     * @param {string} title
+     * @param {Node | null} [actionNode]
+     * @returns {{ section: HTMLDivElement, body: HTMLDivElement }}
+     */
+    function createTaskSection(title, actionNode = null) {
+      const section = document.createElement('div');
+      section.className = 'task-section';
+
+      const header = document.createElement('div');
+      header.className = 'task-section-header';
+
+      const titleNode = document.createElement('div');
+      titleNode.className = 'task-section-title';
+      titleNode.textContent = title;
+      header.appendChild(titleNode);
+
+      if (actionNode) {
+        const actionWrap = document.createElement('div');
+        actionWrap.className = 'task-section-action';
+        actionWrap.appendChild(actionNode);
+        header.appendChild(actionWrap);
+      }
+
+      const body = document.createElement('div');
+      section.append(header, body);
+
+      return { section, body };
+    }
+
+    /**
+     * Render the task card for a workspace.
+     *
+     * @param {{progressExpanded: boolean}} nodeEntry
+     * @param {object} taskView
+     * @returns {HTMLDivElement}
+     */
+    function renderTaskCard(nodeEntry, taskView) {
+      const card = document.createElement('div');
+      card.className = `task-card ${taskView.mode === 'walkthrough' ? 'walkthrough' : 'progress'}`;
+
+      const hero = document.createElement('div');
+      hero.className = 'task-card-hero';
+
+      const header = document.createElement('div');
+      header.className = 'task-card-header';
+      const badge = document.createElement('div');
+      badge.className = 'task-badge';
+      badge.textContent = taskView.mode === 'walkthrough' ? 'Walkthrough' : 'Progress';
+      header.appendChild(badge);
+      hero.appendChild(header);
+
+      const title = document.createElement('div');
+      title.className = 'task-card-title';
+      title.textContent = taskView.goal || 'Task';
+      hero.appendChild(title);
+
+      const subtitle = document.createElement('div');
+      subtitle.className = 'task-card-subtitle';
+      subtitle.textContent = taskView.statusLine || (taskView.mode === 'walkthrough' ? 'Final summary ready.' : 'Progress is being tracked.');
+      hero.appendChild(subtitle);
+      if (taskView.mode !== 'walkthrough' && taskView.processLane) {
+        const heroMeta = document.createElement('div');
+        heroMeta.className = 'task-hero-meta';
+        heroMeta.textContent = taskView.processLane;
+        hero.appendChild(heroMeta);
+      }
+      card.appendChild(hero);
+
+      if (taskView.mode === 'walkthrough' && taskView.walkthrough) {
+        if (taskView.processLane) {
+          const summaryLaneSection = createTaskSection('Process Lane');
+          summaryLaneSection.body.appendChild(createMarkdownTextRow('task-process-lane', taskView.processLane));
+          card.appendChild(summaryLaneSection.section);
+        }
+
+        if (Array.isArray(taskView.walkthrough.summaryChecklist) && taskView.walkthrough.summaryChecklist.length > 0) {
+          const checklistSection = createTaskSection('Checklist Summary');
+          checklistSection.body.appendChild(renderMarkdownListBlock({
+            type: 'list',
+            style: 'checklist',
+            items: taskView.walkthrough.summaryChecklist,
+          }));
+          card.appendChild(checklistSection.section);
+        }
+
+        if (Array.isArray(taskView.walkthrough.preSectionBlocks) && taskView.walkthrough.preSectionBlocks.length > 0) {
+          const prefaceSection = document.createElement('div');
+          prefaceSection.className = 'task-section';
+          appendMarkdownBlocks(prefaceSection, taskView.walkthrough.preSectionBlocks);
+          card.appendChild(prefaceSection);
+        }
+
+        if (Array.isArray(taskView.walkthrough.sections)) {
+          taskView.walkthrough.sections.forEach((section) => {
+            const renderedSection = createTaskSection(section.title);
+            appendMarkdownBlocks(renderedSection.body, section.blocks || []);
+            card.appendChild(renderedSection.section);
+          });
+        }
+
+        const hasStructuredWalkthrough = (
+          (taskView.walkthrough.summaryChecklist || []).length > 0
+          || (taskView.walkthrough.preSectionBlocks || []).length > 0
+          || (taskView.walkthrough.sections || []).length > 0
+        );
+        if (!hasStructuredWalkthrough) {
+          const fallbackSection = createTaskSection('Walkthrough');
+          if (taskView.walkthrough.verification) {
+            fallbackSection.body.appendChild(createMarkdownTextRow('task-meta-line', `Verification: ${taskView.walkthrough.verification}`));
+          }
+          if (taskView.walkthrough.summaryNotes) {
+            fallbackSection.body.appendChild(createMarkdownTextRow('task-meta-line', `Summary: ${taskView.walkthrough.summaryNotes}`));
+          }
+          if (taskView.walkthrough.evidence) {
+            fallbackSection.body.appendChild(createMarkdownTextRow('task-meta-line', `Evidence: ${taskView.walkthrough.evidence}`));
+          }
+          card.appendChild(fallbackSection.section);
+        }
+
+        return card;
+      }
+
+      let expandButton = null;
+      if (taskView.progress.expandable || taskView.progress.overflowCount > 0) {
+        expandButton = document.createElement('button');
+        expandButton.className = 'task-expand-btn';
+        expandButton.type = 'button';
+        expandButton.textContent = nodeEntry.progressExpanded ? 'Collapse all' : 'Expand all ‹';
+        expandButton.addEventListener('click', (event) => {
+          event.stopPropagation();
+          nodeEntry.progressExpanded = !nodeEntry.progressExpanded;
+          nodeEntry.threadRenderKey = '';
+          scheduleRender();
+        });
+      }
+
+      const progressSection = createTaskSection('Progress Updates', expandButton);
+
+      const previewCount = Number.isInteger(taskView.progress.previewCount) && taskView.progress.previewCount > 0
+        ? taskView.progress.previewCount
+        : 3;
+      const visibleItems = nodeEntry.progressExpanded
+        ? taskView.progress.items
+        : taskView.progress.items.slice(Math.max(0, taskView.progress.items.length - previewCount));
+      const hiddenCount = Math.max(0, taskView.progress.items.length - visibleItems.length);
+      const items = visibleItems;
+      if (items.length > 0) {
+        const list = document.createElement('div');
+        list.className = 'task-progress-list';
+        items.forEach((item, index) => {
+          list.appendChild(renderProgressItem(item, index));
+        });
+        progressSection.body.appendChild(list);
+      }
+
+      if (taskView.progress.expandable || taskView.progress.overflowCount > 0) {
+        const actions = document.createElement('div');
+        actions.className = 'task-card-actions';
+
+        if (!nodeEntry.progressExpanded && hiddenCount > 0) {
+          const hint = document.createElement('div');
+          hint.className = 'task-overflow-hint';
+          hint.textContent = `+${hiddenCount} more`;
+          actions.appendChild(hint);
+        }
+
+        if (nodeEntry.progressExpanded && taskView.progress.items.length > previewCount) {
+          const hint = document.createElement('div');
+          hint.className = 'task-overflow-hint';
+          hint.textContent = `${taskView.progress.items.length} total`;
+          actions.appendChild(hint);
+        }
+
+        progressSection.body.appendChild(actions);
+      }
+
+      card.appendChild(progressSection.section);
+
+      return card;
+    }
+
+    /**
+     * Build a stable key for the thread list inside one workspace.
+     *
+     * @param {Array<object>} threads
+     * @returns {string}
+     */
+    function buildThreadRenderKey(threads) {
+      return threads.map((thread) => [
+        thread.id,
+        thread.state,
+        thread.updatedAt,
+        thread.lastEvent || '',
+        thread.isFocused ? 1 : 0,
+        thread.agentId || ''
+      ].join('~')).join('||');
+    }
+
+    /**
+     * Format one thread timestamp into a compact relative label.
+     *
+     * @param {number | string | Date | null | undefined} updatedAt
+     * @returns {string}
+     */
+    function formatThreadRelativeTime(updatedAt) {
+      if (window.sessionsAPI?.formatRelativeTime) {
+        return window.sessionsAPI.formatRelativeTime(updatedAt);
+      }
+      return '';
+    }
+
+    /**
+     * Render the thread list for a workspace with safe DOM APIs.
+     *
+     * @param {{threadsContainer: HTMLDivElement, threadRenderKey: string, progressExpanded: boolean}} nodeEntry
+     * @param {string} cwd
+     * @param {Array<object>} threads
+     * @param {object | null | undefined} taskView
+     * @returns {void}
+     */
+    function renderWorkspaceThreads(nodeEntry, cwd, threads, taskView) {
+      const nextThreadKey = [
+        buildThreadRenderKey(threads),
+        buildTaskRenderKey(taskView, nodeEntry.progressExpanded),
+        cwd
+      ].join('::');
+      if (nodeEntry.threadRenderKey === nextThreadKey) return;
+
+      nodeEntry.threadRenderKey = nextThreadKey;
+      const fragment = document.createDocumentFragment();
+
+      if (taskView) {
+        fragment.appendChild(renderTaskCard(nodeEntry, taskView));
+      }
+
+      if (threads.length === 0) {
+        const empty = document.createElement('div');
+        empty.style.cssText = 'padding: 12px 16px 12px 42px; font-size: 11px; color: var(--text-dim); font-style: italic;';
+        empty.textContent = taskView ? 'No active threads in this workspace.' : 'No active threads in this workspace.';
+        fragment.appendChild(empty);
+        nodeEntry.threadsContainer.replaceChildren(fragment);
+        return;
+      }
+
+      threads.forEach((thread) => {
+        const threadItem = document.createElement('div');
+        threadItem.className = 'thread-item' + (thread.isFocused ? ' active' : '');
+
+        const statusDot = document.createElement('div');
+        statusDot.className = 'status-dot';
+        if (thread.state === 'working' || thread.state === 'thinking') {
+          statusDot.classList.add(thread.state);
+        }
+
+        const agentIcon = createIconNode(AGENT_ICONS[thread.agentId] || AGENT_ICONS.default, 'agent-icon');
+
+        const threadInfo = document.createElement('div');
+        threadInfo.className = 'thread-info';
+        const threadId = document.createElement('div');
+        threadId.className = 'thread-id';
+        threadId.textContent = thread.id.substring(0, 8);
+        const threadStatus = document.createElement('div');
+        threadStatus.className = 'thread-status';
+        threadStatus.textContent = thread.lastEvent || (thread.state.charAt(0).toUpperCase() + thread.state.slice(1));
+        threadInfo.append(threadId, threadStatus);
+
+        const timeEl = document.createElement('div');
+        timeEl.style.cssText = 'font-size:10px; opacity:0.4';
+        timeEl.textContent = formatThreadRelativeTime(thread.updatedAt);
+
+        threadItem.append(statusDot, agentIcon, threadInfo, timeEl);
+        threadItem.addEventListener('click', () => window.sessionsAPI.focusThread(thread.id));
+        fragment.appendChild(threadItem);
+      });
+
+      nodeEntry.threadsContainer.replaceChildren(fragment);
+    }
+
+    /**
+     * Coalesce renderer updates to one paint per animation frame.
+     *
+     * @returns {void}
+     */
+    function scheduleRender() {
+      if (renderQueued) return;
+      renderQueued = true;
+
+      requestAnimationFrame(() => {
+        renderQueued = false;
+        const renderKey = buildPayloadKey(latestPayload);
+        if (renderKey === lastRenderKey && workspaceNodeMap.size > 0) {
+          return;
+        }
+        renderSessions(latestPayload, renderKey);
+      });
+    }
+
+    window.sessionsAPI.onSessionsUpdate((payload) => {
+      latestPayload = normalizePayload(payload);
+      scheduleRender();
+    });
+
+    /**
+     * Render grouped sessions and preserve the expanded workspace across updates.
+     *
+     * @param {{ entries: Array<object>, focusedSessionId: string | null, workspaceTaskViews: Record<string, object> }} payload
+     * @param {string} renderKey
+     * @returns {void}
+     */
+    function renderSessions(payload, renderKey = buildPayloadKey(payload)) {
+      const sessions = payload.entries || [];
+      const workspaceTaskViews = payload.workspaceTaskViews || {};
+
+      if (sessions.length === 0) {
+        expandedWorkspaceCwd = null;
+        shouldAutoExpandWorkspace = true;
+        workspaceNodeMap = new Map();
+        lastRenderKey = renderKey;
+        renderEmptyState();
+        return;
+      }
+
+      // Group by CWD
+      const groups = {};
+      sessions.forEach(s => {
+        const workspaceKey = (typeof s.workspaceKey === 'string' && s.workspaceKey) || s.cwd || UNASSIGNED_WORKSPACE_KEY;
+        const cwd = typeof s.cwd === 'string' && s.cwd ? s.cwd : null;
+        if (!groups[workspaceKey]) {
+          groups[workspaceKey] = {
+            workspaceKey,
+            cwd,
+            threads: [],
+            maxUpdated: 0,
+            isActive: false,
+            isStatic: false,
+            hasFocusedThread: false,
+            isUnassigned: !cwd
+          };
+        }
+        if (!s.isStatic) {
+          groups[workspaceKey].threads.push(s);
+          groups[workspaceKey].isStatic = false;
+        } else {
+          groups[workspaceKey].isStatic = true;
+        }
+        
+        if (s.isActive) groups[workspaceKey].isActive = true;
+        if (s.isFocused) groups[workspaceKey].hasFocusedThread = true;
+        if (s.updatedAt > groups[workspaceKey].maxUpdated) {
+          groups[workspaceKey].maxUpdated = s.updatedAt;
+        }
+      });
+
+      // Sort by active first, then by recency (maxUpdated)
+      const sortedGroups = Object.entries(groups).sort((a, b) => {
+        if (a[1].isActive !== b[1].isActive) return b[1].isActive ? 1 : -1;
+        return b[1].maxUpdated - a[1].maxUpdated;
+      });
+
+      if (expandedWorkspaceCwd && !groups[expandedWorkspaceCwd]) {
+        expandedWorkspaceCwd = null;
+        shouldAutoExpandWorkspace = true;
+      }
+
+      if (!expandedWorkspaceCwd && shouldAutoExpandWorkspace && sortedGroups.length > 0) {
+        const preferredGroup = sortedGroups.find(([, data]) => data.hasFocusedThread || data.isActive) || sortedGroups[0];
+        expandedWorkspaceCwd = preferredGroup[0];
+        shouldAutoExpandWorkspace = false;
+      }
+
+      const nextWorkspaceNodeMap = new Map();
+      const orderedNodes = [];
+
+      sortedGroups.forEach(([workspaceKey, data]) => {
+        const cwd = data.cwd;
+        const workspaceName = cwd ? (cwd.split(/[\\/]/).pop() || cwd) : 'Unassigned Sessions';
+        const threads = data.threads;
+        const isActive = data.isActive;
+        const hasWorkspaceRoot = !!cwd;
+
+        const nodeEntry = workspaceNodeMap.get(workspaceKey) || createWorkspaceNodes();
+        nodeEntry.row.className = 'workspace-row' + (isActive ? ' active-ws' : '');
+        nodeEntry.workspaceNameEl.title = cwd || 'Workspace path unavailable';
+        nodeEntry.nameText.textContent = workspaceName;
+        nodeEntry.activeBadgeEl.hidden = !isActive;
+        nodeEntry.actions.hidden = !hasWorkspaceRoot;
+        nodeEntry.closeBtn.onclick = (event) => {
+          event.stopPropagation();
+          if (!cwd) return;
+          window.sessionsAPI.closeWorkspace(cwd);
+        };
+        nodeEntry.newThreadBtn.onclick = (event) => {
+          event.stopPropagation();
+          if (!cwd) return;
+          window.sessionsAPI.newThread(cwd);
+        };
+
+        renderWorkspaceThreads(nodeEntry, workspaceKey, threads, cwd ? workspaceTaskViews[cwd] : null);
+
+        nodeEntry.row.onclick = () => {
+          const wasExpanded = expandedWorkspaceCwd === workspaceKey;
+          setExpandedWorkspace(wasExpanded ? null : workspaceKey, { manual: true });
+        };
+
+        nextWorkspaceNodeMap.set(workspaceKey, nodeEntry);
+        orderedNodes.push(nodeEntry.row, nodeEntry.threadsContainer);
+      });
+
+      listEl.replaceChildren(...orderedNodes);
+      workspaceNodeMap = nextWorkspaceNodeMap;
+      lastRenderKey = renderKey;
+      applyExpandedWorkspaceState();
+    }
+
+    document.getElementById('close-sessions').onclick = () => window.sessionsAPI.hideSessions();
+  </script>
+</body>
+</html>

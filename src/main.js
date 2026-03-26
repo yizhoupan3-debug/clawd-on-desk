@@ -2,6 +2,21 @@ const { app, BrowserWindow, screen, Menu, Tray, ipcMain, nativeImage, dialog, sh
 const http = require("http");
 const path = require("path");
 const fs = require("fs");
+const os = require("os");
+const { exec, execFile, spawn } = require("child_process");
+const {
+  buildSessionsWindowPayload,
+  serializeSessionsWindowPayload,
+} = require("./session-payload-utils");
+const {
+  TASK_ARTIFACT_FILES,
+  buildWorkspaceTaskViews,
+  collectWorkspaceRoots,
+} = require("./workspace-task-artifacts");
+const {
+  resolveSessionTerminalAction,
+  resolveTerminalAction,
+} = require("./terminal-launch-utils");
 
 const isMac = process.platform === "darwin";
 
@@ -227,7 +242,7 @@ const STATE_PRIORITY = {
 const OBJ_SCALE_W = 1.9;   // width: 190%
 const OBJ_SCALE_H = 1.3;   // height: 130%
 const OBJ_OFF_X   = -0.45; // left: -45%
-const OBJ_OFF_Y   = -0.25; // top: -25%
+const OBJ_OFF_Y   = -0.38; // top: -38% — raise pet so it does not sit too low in the window
 
 function getObjRect(bounds) {
   return {
@@ -235,6 +250,36 @@ function getObjRect(bounds) {
     y: bounds.y + bounds.height * OBJ_OFF_Y,
     w: bounds.width * OBJ_SCALE_W,
     h: bounds.height * OBJ_SCALE_H,
+  };
+}
+
+/**
+ * Compute how far the rendered pet artwork extends outside the transparent window.
+ * This keeps drag clamping aligned with the actual SVG placement instead of magic ratios.
+ *
+ * @param {number} w - Window width in screen pixels.
+ * @param {number} h - Window height in screen pixels.
+ * @returns {{ left: number, right: number, top: number, bottom: number }} Overflow margins in pixels.
+ */
+function getObjectOverflowMargins(w, h) {
+  const objW = w * OBJ_SCALE_W;
+  const objH = h * OBJ_SCALE_H;
+  const scale = Math.min(objW, objH) / 45;
+  const offsetX = w * OBJ_OFF_X + (objW - 45 * scale) / 2;
+  const offsetY = h * OBJ_OFF_Y + (objH - 45 * scale) / 2;
+
+  // Use the default hitbox to determine the visual boundaries
+  const hb = HIT_BOXES.default;
+  const hitLeftRelative = offsetX + (hb.x + 15) * scale;
+  const hitRightRelative = offsetX + (hb.x + 15 + hb.w) * scale;
+  const hitTopRelative = offsetY + (hb.y + 25) * scale;
+  const hitBottomRelative = offsetY + (hb.y + 25 + hb.h) * scale;
+
+  return {
+    left: Math.round(Math.max(0, hitLeftRelative)),
+    right: Math.round(Math.max(0, w - hitRightRelative)),
+    top: Math.round(Math.max(0, hitTopRelative)),
+    bottom: Math.round(Math.max(0, h - hitBottomRelative)),
   };
 }
 
@@ -246,17 +291,96 @@ const HIT_BOXES = {
 };
 const WIDE_SVGS = new Set(["clawd-error.svg", "clawd-working-building.svg", "clawd-notification.svg", "clawd-working-conducting.svg"]);
 let currentHitBox = HIT_BOXES.default;
+let agentPidCache = new Set();
+let lastPgrepAt = 0;
 
 let win;
 let tray = null;
 let contextMenuOwner = null;
 let currentSize = "S";
 let contextMenu;
+let sessionsWin = null;
 let doNotDisturb = false;
 let isQuitting = false;
 let showTray = true;
-let showDock = true;
+let showDock = false;
 let autoStartWithClaude = false;
+let focusedSessionId = null;
+let passiveCounter = 0;
+let sessionWin = null; // New global for the custom session menu window
+let sessionsWindowLoaded = false;
+let sessionsWindowPendingFlush = false;
+let sessionsWindowFlushTimer = null;
+let sessionsWindowLastPayloadKey = "";
+
+const SESSION_WINDOW_UPDATE_DEBOUNCE_MS = 80;
+// ── Global Workspace State ──
+let activeWorkspaceRoots = [];
+let savedWorkspaceRoots = [];
+const workspaceArtifactWatchers = new Map();
+const CODEX_GLOBAL_STATE_PATH = path.join(os.homedir(), ".codex", ".codex-global-state.json");
+
+/**
+ * Refresh per-workspace artifact watchers for the sessions UI.
+ *
+ * @returns {void}
+ */
+function syncWorkspaceArtifactWatchers() {
+  const nextRoots = new Set(collectWorkspaceRoots({
+    sessionEntries: sessions.entries(),
+    activeWorkspaceRoots,
+    savedWorkspaceRoots,
+  }));
+
+  for (const [root, watcher] of workspaceArtifactWatchers.entries()) {
+    if (nextRoots.has(root)) continue;
+    try {
+      watcher.close();
+    } catch {}
+    workspaceArtifactWatchers.delete(root);
+  }
+
+  for (const root of nextRoots) {
+    if (workspaceArtifactWatchers.has(root) || !root) continue;
+    try {
+      const watcher = fs.watch(root, (eventType, filename) => {
+        if (!filename || !TASK_ARTIFACT_FILES.includes(String(filename))) return;
+        updateSessionsWindow({ immediate: true, force: true });
+      });
+      workspaceArtifactWatchers.set(root, watcher);
+    } catch {}
+  }
+}
+
+function updateGlobalWorkspaces() {
+  try {
+    if (fs.existsSync(CODEX_GLOBAL_STATE_PATH)) {
+      const data = JSON.parse(fs.readFileSync(CODEX_GLOBAL_STATE_PATH, "utf8"));
+      activeWorkspaceRoots = data["active-workspace-roots"] || [];
+      savedWorkspaceRoots = data["electron-saved-workspace-roots"] || [];
+      syncWorkspaceArtifactWatchers();
+      updateSessionsWindow(); // Refresh UI if open
+    }
+  } catch (e) {
+    console.warn("Clawd: failed to read codex global state:", e.message);
+  }
+}
+
+function startGlobalStateMonitor() {
+  updateGlobalWorkspaces();
+  try {
+    const dir = path.dirname(CODEX_GLOBAL_STATE_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    // Watch directory for file creation/deletion/renames
+    fs.watch(dir, (event, filename) => {
+      if (filename === ".codex-global-state.json") {
+        updateGlobalWorkspaces();
+      }
+    });
+  } catch (e) {
+    console.warn("Clawd: global state monitor failed to start:", e.message);
+  }
+}
 
 function sendToRenderer(channel, ...args) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, ...args);
@@ -264,7 +388,7 @@ function sendToRenderer(channel, ...args) {
 
 // ── State machine ──
 let currentState = "idle";
-let currentSvg = null;
+let currentSvg = SVG_IDLE_FOLLOW; // Initialize with a valid SVG constant
 let stateChangedAt = Date.now();
 let pendingTimer = null;
 let autoReturnTimer = null;
@@ -278,6 +402,7 @@ let lastEyeDx = 0, lastEyeDy = 0;
 let forceEyeResend = false;
 let forceMouseStateRefresh = false;
 let eyeResendTimer = null;
+let windowBoundsCache = null;
 
 // ── Mini Mode ──
 const MINI_OFFSET_RATIO = 0.486;
@@ -481,171 +606,248 @@ function getHitRectScreen(bounds) {
 }
 
 // ── Unified main tick (hit-test + eye tracking + sleep detection) ──
+/**
+ * Synchronize the cached main-window bounds used by the high-frequency tick.
+ *
+ * @param {{ x: number, y: number, width: number, height: number } | null} [bounds]
+ * @returns {{ x: number, y: number, width: number, height: number } | null}
+ */
+function syncWindowBoundsCache(bounds = null) {
+  if (!win || win.isDestroyed()) {
+    windowBoundsCache = null;
+    return windowBoundsCache;
+  }
+
+  windowBoundsCache = bounds || win.getBounds();
+  return windowBoundsCache;
+}
+
+/**
+ * Return the latest cached bounds for the pet window.
+ *
+ * @returns {{ x: number, y: number, width: number, height: number }}
+ */
+function getCachedWindowBounds() {
+  return windowBoundsCache || syncWindowBoundsCache();
+}
+
+/**
+ * Choose the next main-loop interval based on the current interaction pressure.
+ *
+ * @param {boolean} hasActiveBubbles - Whether any permission bubble is currently visible.
+ * @returns {number}
+ */
+function getMainTickInterval(hasActiveBubbles) {
+  const activeTracking = (currentState === "idle" && !idlePaused)
+    || (currentState === "mini-idle" && !idlePaused && !miniTransitioning);
+
+  if (dragLocked || activeTracking || mouseOverPet) return 50;
+  if (miniTransitioning || isAnimating) return 75;
+  if (menuOpen || hasActiveBubbles) return 100;
+  if (doNotDisturb || SLEEP_SEQUENCE.has(currentState) || currentState === "mini-sleep") return 200;
+  return 125;
+}
+
+/**
+ * Stop the scheduled main loop safely.
+ *
+ * @returns {void}
+ */
+function stopMainTick() {
+  if (!mainTickTimer) return;
+  clearTimeout(mainTickTimer);
+  mainTickTimer = null;
+}
+
 function startMainTick() {
   if (mainTickTimer) return;
   win.setIgnoreMouseEvents(true);
   mouseOverPet = false;
+  syncWindowBoundsCache();
 
-  mainTickTimer = setInterval(() => {
-    if (!win || win.isDestroyed()) return;
-    const cursor = screen.getCursorScreenPoint();
+  const tick = () => {
+    let nextDelay = 125;
+    try {
+      mainTickTimer = null;
+      if (!win || win.isDestroyed()) return;
+      const cursor = screen.getCursorScreenPoint();
 
-    // ── Hit-test (always-on) ──
-    const bounds = win.getBounds();
-    if (!dragLocked) {
-      const hit = getHitRectScreen(bounds);
-      const over = cursor.x >= hit.left && cursor.x <= hit.right
-                && cursor.y >= hit.top  && cursor.y <= hit.bottom;
-      if (over !== mouseOverPet || forceMouseStateRefresh) {
-        forceMouseStateRefresh = false;
-        mouseOverPet = over;
-        win.setIgnoreMouseEvents(!over);
-      }
-    }
+      // ── Hit-test (always-on) ──
+      const bounds = getCachedWindowBounds();
+      const hasActiveBubbles = pendingPermissions.some(p => p.bubble && !p.bubble.isDestroyed());
+      nextDelay = getMainTickInterval(hasActiveBubbles);
 
-    // ── Mini mode peek hover ──
-    if (miniMode && !miniTransitioning && !dragLocked && !menuOpen) {
-      const canPeek = currentState === "mini-idle" || currentState === "mini-peek"
-        || currentState === "mini-sleep";
-      if (!isAnimating && canPeek) {
-        if (mouseOverPet && currentState === "mini-sleep" && !miniSleepPeeked) {
-          miniPeekIn();
-          miniSleepPeeked = true;
-        } else if (!mouseOverPet && currentState === "mini-sleep" && miniSleepPeeked) {
-          miniPeekOut();
-          miniSleepPeeked = false;
-        } else if (mouseOverPet && currentState !== "mini-peek" && currentState !== "mini-sleep") {
-          miniPeekIn();
-          applyState("mini-peek");
-        } else if (!mouseOverPet && currentState === "mini-peek") {
-          miniPeekOut();
-          applyState("mini-idle");
+      if (!dragLocked) {
+        const hit = getHitRectScreen(bounds);
+        const over = cursor.x >= hit.left && cursor.x <= hit.right
+                  && cursor.y >= hit.top  && cursor.y <= hit.bottom;
+
+        // Skip toggling if a menu is open OR any permission bubbles are active.
+        // This ensures stability of the pet window's focus/hit-test state while the user is interacting
+        // with child windows or menus, avoiding unexpected dismissals on macOS/Windows.
+        if (!menuOpen && !hasActiveBubbles && (over !== mouseOverPet || forceMouseStateRefresh)) {
+          forceMouseStateRefresh = false;
+          mouseOverPet = over;
+          win.setIgnoreMouseEvents(!over);
         }
       }
-    }
 
-    // ── Eye tracking + sleep detection (idle only, not during reactions) ──
-    const idleNow = currentState === "idle" && !idlePaused;
-    const miniIdleNow = currentState === "mini-idle" && !idlePaused && !miniTransitioning;
+      // ── Mini mode peek hover ──
+      if (miniMode && !miniTransitioning && !dragLocked && !menuOpen) {
+        const canPeek = currentState === "mini-idle" || currentState === "mini-peek"
+          || currentState === "mini-sleep";
+        if (!isAnimating && canPeek) {
+          if (mouseOverPet && currentState === "mini-sleep" && !miniSleepPeeked) {
+            miniPeekIn();
+            miniSleepPeeked = true;
+          } else if (!mouseOverPet && currentState === "mini-sleep" && miniSleepPeeked) {
+            miniPeekOut();
+            miniSleepPeeked = false;
+          } else if (mouseOverPet && currentState !== "mini-peek" && currentState !== "mini-sleep") {
+            miniPeekIn();
+            applyState("mini-peek");
+          } else if (!mouseOverPet && currentState === "mini-peek") {
+            miniPeekOut();
+            applyState("mini-idle");
+          }
+        }
+      }
 
-    // Edge detection: idle entry → reset state variables
-    if (idleNow && !idleWasActive) {
-      isMouseIdle = false;
-      hasTriggeredYawn = false;
-      idleLookPlayed = false;
-      lastCursorX = null;
-      lastCursorY = null;
-      mouseStillSince = Date.now();
-      lastEyeDx = 0;
-      lastEyeDy = 0;
-      if (idleLookReturnTimer) { clearTimeout(idleLookReturnTimer); idleLookReturnTimer = null; }
-      if (yawnDelayTimer) { clearTimeout(yawnDelayTimer); yawnDelayTimer = null; }
-    }
+      // ── Eye tracking + sleep detection (idle only, not during reactions) ──
+      const idleNow = currentState === "idle" && !idlePaused;
+      const miniIdleNow = currentState === "mini-idle" && !idlePaused && !miniTransitioning;
 
-    // Edge detection: idle exit → clear pending timers
-    // (variable resets not needed here — idle entry will overwrite them all)
-    if (!idleNow && idleWasActive) {
-      if (idleLookReturnTimer) { clearTimeout(idleLookReturnTimer); idleLookReturnTimer = null; }
-      if (yawnDelayTimer) { clearTimeout(yawnDelayTimer); yawnDelayTimer = null; }
-    }
-    idleWasActive = idleNow;
-
-    if (!idleNow && !miniIdleNow) return;
-
-    // ── Below: idle or mini-idle logic ──
-    const moved = lastCursorX !== null && (cursor.x !== lastCursorX || cursor.y !== lastCursorY);
-    lastCursorX = cursor.x;
-    lastCursorY = cursor.y;
-
-    // Normal idle: mouse idle detection + sleep sequence
-    if (idleNow) {
-      if (moved) {
-        mouseStillSince = Date.now();
+      // Edge detection: idle entry → reset state variables
+      if (idleNow && !idleWasActive) {
+        isMouseIdle = false;
         hasTriggeredYawn = false;
         idleLookPlayed = false;
+        lastCursorX = null;
+        lastCursorY = null;
+        mouseStillSince = Date.now();
+        lastEyeDx = 0;
+        lastEyeDy = 0;
         if (idleLookReturnTimer) { clearTimeout(idleLookReturnTimer); idleLookReturnTimer = null; }
         if (yawnDelayTimer) { clearTimeout(yawnDelayTimer); yawnDelayTimer = null; }
-        if (isMouseIdle) {
-          isMouseIdle = false;
-          sendToRenderer("state-change", "idle", SVG_IDLE_FOLLOW);
+      }
+
+      // Edge detection: idle exit → clear pending timers
+      // (variable resets not needed here — idle entry will overwrite them all)
+      if (!idleNow && idleWasActive) {
+        if (idleLookReturnTimer) { clearTimeout(idleLookReturnTimer); idleLookReturnTimer = null; }
+        if (yawnDelayTimer) { clearTimeout(yawnDelayTimer); yawnDelayTimer = null; }
+      }
+      idleWasActive = idleNow;
+
+      if (!idleNow && !miniIdleNow) return;
+
+      // ── Below: idle or mini-idle logic ──
+      const moved = lastCursorX !== null && (cursor.x !== lastCursorX || cursor.y !== lastCursorY);
+      lastCursorX = cursor.x;
+      lastCursorY = cursor.y;
+
+      // Normal idle: mouse idle detection + sleep sequence
+      if (idleNow) {
+        if (moved) {
+          mouseStillSince = Date.now();
+          hasTriggeredYawn = false;
+          idleLookPlayed = false;
+          if (idleLookReturnTimer) { clearTimeout(idleLookReturnTimer); idleLookReturnTimer = null; }
+          if (yawnDelayTimer) { clearTimeout(yawnDelayTimer); yawnDelayTimer = null; }
+          if (isMouseIdle) {
+            isMouseIdle = false;
+            sendToRenderer("state-change", "idle", SVG_IDLE_FOLLOW);
+          }
+        }
+
+        const elapsed = Date.now() - mouseStillSince;
+
+        // Startup recovery: Claude Code is running but no hook yet — stay awake
+        // Only suppress sleep sequence, don't skip eye tracking below
+        if (startupRecoveryActive) {
+          mouseStillSince = Date.now();
+        }
+
+        // 60s no mouse movement → yawning → dozing
+        if (!hasTriggeredYawn && elapsed >= MOUSE_SLEEP_TIMEOUT) {
+          hasTriggeredYawn = true;
+          if (!isMouseIdle) sendToRenderer("eye-move", 0, 0);
+          yawnDelayTimer = setTimeout(() => {
+            yawnDelayTimer = null;
+            if (currentState === "idle") setState("yawning");
+          }, isMouseIdle ? 50 : 250);
+          return;
+        }
+
+        // Passive agent detection is handled by the 5s watchdog in app.whenReady
+
+        // 20s no mouse movement → idle-look (play once, then return)
+        if (!isMouseIdle && !hasTriggeredYawn && !idleLookPlayed && elapsed >= MOUSE_IDLE_TIMEOUT) {
+          isMouseIdle = true;
+          idleLookPlayed = true;
+          sendToRenderer("eye-move", 0, 0);
+          setTimeout(() => {
+            if (isMouseIdle && currentState === "idle") {
+              sendToRenderer("state-change", "idle", SVG_IDLE_LOOK);
+            }
+          }, 250);
+          idleLookReturnTimer = setTimeout(() => {
+            idleLookReturnTimer = null;
+            if (isMouseIdle && currentState === "idle") {
+              isMouseIdle = false;
+              sendToRenderer("state-change", "idle", SVG_IDLE_FOLLOW);
+              setTimeout(() => { forceEyeResend = true; }, 200);
+            }
+          }, 250 + IDLE_LOOK_DURATION);
+          return;
         }
       }
 
-      const elapsed = Date.now() - mouseStillSince;
+      const trackEyesNow = (idleNow && currentSvg === SVG_IDLE_FOLLOW && !isMouseIdle) || miniIdleNow;
+      if (!trackEyesNow) return;
+      if (!moved && !forceEyeResend) return;
 
-      // Startup recovery: Claude Code is running but no hook yet — stay awake
-      // Only suppress sleep sequence, don't skip eye tracking below
-      if (startupRecoveryActive) {
-        mouseStillSince = Date.now();
+      // ── Eye position calculation (shared by idle and mini-idle) ──
+      const skipDedup = forceEyeResend;
+      forceEyeResend = false;
+
+      const obj = getObjRect(bounds);
+      const eyeScreenX = obj.x + obj.w * (22 / 45);
+      const eyeScreenY = obj.y + obj.h * (34 / 45);
+
+      const relX = cursor.x - eyeScreenX;
+      const relY = cursor.y - eyeScreenY;
+
+      const MAX_OFFSET = 3;
+      const dist = Math.sqrt(relX * relX + relY * relY);
+      let eyeDx = 0, eyeDy = 0;
+      if (dist > 1) {
+        const scale = Math.min(1, dist / 300);
+        eyeDx = (relX / dist) * MAX_OFFSET * scale;
+        eyeDy = (relY / dist) * MAX_OFFSET * scale;
       }
 
-      // 60s no mouse movement → yawning → dozing
-      if (!hasTriggeredYawn && elapsed >= MOUSE_SLEEP_TIMEOUT) {
-        hasTriggeredYawn = true;
-        if (!isMouseIdle) sendToRenderer("eye-move", 0, 0);
-        yawnDelayTimer = setTimeout(() => {
-          yawnDelayTimer = null;
-          if (currentState === "idle") setState("yawning");
-        }, isMouseIdle ? 50 : 250);
-        return;
-      }
+      eyeDx = Math.round(eyeDx * 2) / 2;
+      eyeDy = Math.round(eyeDy * 2) / 2;
+      eyeDx = Math.max(-3, Math.min(3, eyeDx));
+      eyeDy = Math.max(-1.5, Math.min(1.5, eyeDy));
 
-      // 20s no mouse movement → idle-look (play once, then return)
-      if (!isMouseIdle && !hasTriggeredYawn && !idleLookPlayed && elapsed >= MOUSE_IDLE_TIMEOUT) {
-        isMouseIdle = true;
-        idleLookPlayed = true;
-        sendToRenderer("eye-move", 0, 0);
-        setTimeout(() => {
-          if (isMouseIdle && currentState === "idle") {
-            sendToRenderer("state-change", "idle", SVG_IDLE_LOOK);
-          }
-        }, 250);
-        idleLookReturnTimer = setTimeout(() => {
-          idleLookReturnTimer = null;
-          if (isMouseIdle && currentState === "idle") {
-            isMouseIdle = false;
-            sendToRenderer("state-change", "idle", SVG_IDLE_FOLLOW);
-            setTimeout(() => { forceEyeResend = true; }, 200);
-          }
-        }, 250 + IDLE_LOOK_DURATION);
-        return;
+      // Deadzone: skip small jitter if the total movement is < 0.5
+      const dMove = Math.sqrt(Math.pow(eyeDx - lastEyeDx, 2) + Math.pow(eyeDy - lastEyeDy, 2));
+
+      if (skipDedup || dMove >= 0.5) {
+        lastEyeDx = eyeDx;
+        lastEyeDy = eyeDy;
+        sendToRenderer("eye-move", eyeDx, eyeDy);
+      }
+    } finally {
+      if (win && !win.isDestroyed() && !mainTickTimer) {
+        mainTickTimer = setTimeout(tick, nextDelay);
       }
     }
+  };
 
-    const trackEyesNow = (idleNow && currentSvg === SVG_IDLE_FOLLOW && !isMouseIdle) || miniIdleNow;
-    if (!trackEyesNow) return;
-    if (!moved && !forceEyeResend) return;
-
-    // ── Eye position calculation (shared by idle and mini-idle) ──
-    const skipDedup = forceEyeResend;
-    forceEyeResend = false;
-
-    const obj = getObjRect(bounds);
-    const eyeScreenX = obj.x + obj.w * (22 / 45);
-    const eyeScreenY = obj.y + obj.h * (34 / 45);
-
-    const relX = cursor.x - eyeScreenX;
-    const relY = cursor.y - eyeScreenY;
-
-    const MAX_OFFSET = 3;
-    const dist = Math.sqrt(relX * relX + relY * relY);
-    let eyeDx = 0, eyeDy = 0;
-    if (dist > 1) {
-      const scale = Math.min(1, dist / 300);
-      eyeDx = (relX / dist) * MAX_OFFSET * scale;
-      eyeDy = (relY / dist) * MAX_OFFSET * scale;
-    }
-
-    eyeDx = Math.round(eyeDx * 2) / 2;
-    eyeDy = Math.round(eyeDy * 2) / 2;
-    eyeDy = Math.max(-1.5, Math.min(1.5, eyeDy));
-
-    if (skipDedup || eyeDx !== lastEyeDx || eyeDy !== lastEyeDy) {
-      lastEyeDx = eyeDx;
-      lastEyeDy = eyeDy;
-      sendToRenderer("eye-move", eyeDx, eyeDy);
-    }
-  }, 50); // ~20fps — hit-test needs faster response than 67ms eye tracking
+  tick();
 }
 
 // ── Wake poll (detect mouse movement during dozing → wake up) ──
@@ -691,10 +893,24 @@ function wakeFromDoze() {
   }, 350);
 }
 
+function deleteSession(id) {
+  sessions.delete(id);
+  if (focusedSessionId === id) {
+    focusedSessionId = null;
+  }
+  // Cleanup any pending permission bubbles anchored to this session to prevent leak
+  const toDeny = pendingPermissions.filter(p => p.sessionId === id);
+  for (const perm of toDeny) {
+    resolvePermissionEntry(perm, "deny", "Session ended");
+  }
+  syncWorkspaceArtifactWatchers();
+  updateSessionsWindow();
+}
+
 // ── Session management ──
 const ONESHOT_STATES = new Set(["attention", "error", "sweeping", "notification", "carrying"]);
 
-function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain, agentPid, agentId) {
+function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain, agentPid, agentId, depth) {
   // Agent is communicating — no need for startup recovery
   if (startupRecoveryActive) {
     startupRecoveryActive = false;
@@ -702,8 +918,6 @@ function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain
   }
 
   // PermissionRequest command hook: show notification animation only, don't mutate session.
-  // The HTTP hook runs in parallel and handles the actual decision. If we set session to idle
-  // here, it can overwrite a newer "working" state after the user approves.
   if (event === "PermissionRequest") {
     setState("notification");
     return;
@@ -715,13 +929,22 @@ function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain
   const srcCwd = cwd || (existing && existing.cwd) || "";
   const srcEditor = editor || (existing && existing.editor) || null;
   const srcPidChain = (pidChain && pidChain.length) ? pidChain : (existing && existing.pidChain) || null;
-  const srcAgentPid = agentPid || (existing && existing.agentPid) || null;
   const srcAgentId = agentId || (existing && existing.agentId) || null;
+  const srcAgentPid = agentPid || (existing && existing.agentPid) || null;
+  const srcDepth = (Number.isInteger(depth) && depth > 0) ? depth : (existing && existing.depth) || null;
 
-  const base = { sourcePid: srcPid, cwd: srcCwd, editor: srcEditor, pidChain: srcPidChain, agentPid: srcAgentPid, agentId: srcAgentId };
+  const base = {
+    sourcePid: srcPid,
+    cwd: srcCwd,
+    editor: srcEditor,
+    pidChain: srcPidChain,
+    agentPid: srcAgentPid,
+    agentId: srcAgentId,
+    depth: srcDepth
+  };
 
   if (event === "SessionEnd") {
-    sessions.delete(sessionId);
+    deleteSession(sessionId);
   } else if (state === "attention" || state === "notification" || SLEEP_SEQUENCE.has(state)) {
     // Stop/notification/sleep: session goes idle — if work continues, new hooks will re-set
     sessions.set(sessionId, { state: "idle", updatedAt: Date.now(), ...base });
@@ -743,11 +966,13 @@ function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain
     // shouldn't override juggling — only SubagentStop should end it.
     if (existing && existing.state === "juggling" && state === "working" && event !== "SubagentStop" && event !== "subagentStop") {
       existing.updatedAt = Date.now();
+      existing.lastEvent = event;
     } else {
-      sessions.set(sessionId, { state, updatedAt: Date.now(), ...base });
+      sessions.set(sessionId, { state, updatedAt: Date.now(), lastEvent: event, ...base });
     }
   }
   cleanStaleSessions();
+  syncWorkspaceArtifactWatchers();
 
   // All sessions ended → sleep immediately
   if (sessions.size === 0 && event === "SessionEnd") {
@@ -763,6 +988,7 @@ function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain
 
   const displayState = resolveDisplayState();
   setState(displayState, getSvgOverride(displayState));
+  updateSessionsWindow();
 }
 
 let staleCleanupTimer = null;
@@ -779,7 +1005,7 @@ function cleanStaleSessions() {
 
     // Agent process dead → orphan session, delete immediately regardless of age
     if (s.agentPid && !isProcessAlive(s.agentPid)) {
-      sessions.delete(id); changed = true;
+      deleteSession(id); changed = true;
       continue;
     }
 
@@ -787,17 +1013,17 @@ function cleanStaleSessions() {
       // Very stale (5 min): PID check or delete
       if (s.sourcePid) {
         if (!isProcessAlive(s.sourcePid)) {
-          sessions.delete(id); changed = true;
+          deleteSession(id); changed = true;
         } else if (s.state !== "idle") {
           s.state = "idle"; changed = true;
         }
       } else {
-        sessions.delete(id); changed = true;
+        deleteSession(id); changed = true;
       }
     } else if (age > WORKING_STALE_MS) {
       // Moderately stale (5 min): check if terminal was closed
       if (s.sourcePid && !isProcessAlive(s.sourcePid)) {
-        sessions.delete(id); changed = true;
+        deleteSession(id); changed = true;
       } else if (s.state === "working" || s.state === "juggling" || s.state === "thinking") {
         // No hook event for 5 min while busy → likely interrupted or stalled
         s.state = "idle"; s.updatedAt = now; changed = true;
@@ -806,48 +1032,73 @@ function cleanStaleSessions() {
     // Sessions updated recently: skip — recent hook events prove liveness
   }
   // If stale sessions were cleaned, re-resolve display state
-  if (changed && sessions.size === 0) {
-    setState("yawning");
-  } else if (changed) {
+  if (changed) {
     const resolved = resolveDisplayState();
     setState(resolved, getSvgOverride(resolved));
-  }
-
-  // Startup recovery: recheck if Claude Code is still running
-  if (startupRecoveryActive && sessions.size === 0) {
-    detectRunningAgentProcesses((found) => {
-      if (!found) {
-        startupRecoveryActive = false;
-        if (startupRecoveryTimer) { clearTimeout(startupRecoveryTimer); startupRecoveryTimer = null; }
-      }
-    });
+    updateSessionsWindow();
   }
 }
 
-// Detect running agent processes (async, for startup recovery).
-// Matches Claude Code (native + node), Codex CLI, and Copilot CLI.
+// (Moved to app.whenReady for stable initialization)
+
+// Detect running agent processes using a PID cache to minimize 'pgrep' overhead.
 let _detectInFlight = false;
 function detectRunningAgentProcesses(callback) {
+  const now = Date.now();
+  
+  // 1. Check if any cached PIDs are still alive (very cheap)
+  let anyAlive = false;
+  if (agentPidCache.size > 0) {
+    for (const pid of agentPidCache) {
+      if (isProcessAlive(pid)) {
+        anyAlive = true;
+      } else {
+        agentPidCache.delete(pid);
+      }
+    }
+  }
+
+  // 2. If agents are still alive and cache is fresh (< 30s), avoid pgrep
+  if (anyAlive && (now - lastPgrepAt < 30000)) {
+    return callback(true);
+  }
+
+  // 3. Otherwise, run pgrep to refresh cache
   if (_detectInFlight) return;
   _detectInFlight = true;
-  const done = (result) => { _detectInFlight = false; callback(result); };
-  const { exec } = require("child_process");
+  
+  const done = (result, pids = []) => {
+    _detectInFlight = false;
+    lastPgrepAt = Date.now();
+    if (result) {
+      pids.forEach(p => agentPidCache.add(p));
+    }
+    callback(result);
+  };
+
   if (process.platform === "win32") {
+    // Windows implementation stays relatively the same but could also be optimized
     exec(
-      'wmic process where "(Name=\'node.exe\' and CommandLine like \'%claude-code%\') or Name=\'claude.exe\' or Name=\'codex.exe\' or Name=\'copilot.exe\'" get ProcessId /format:csv',
+      'wmic process where "((Name=\'node.exe\' or Name=\'node\') and (CommandLine like \'%claude-code%\' or CommandLine like \'%deer-flow%\' or CommandLine like \'%antigravity%\')) or Name=\'claude.exe\' or Name=\'codex.exe\' or Name=\'copilot.exe\'" get ProcessId /format:csv',
       { encoding: "utf8", timeout: 5000, windowsHide: true },
-      (err, stdout) => done(!err && /\d+/.test(stdout))
+      (err, stdout) => {
+        const pids = (stdout || "").match(/\d+/g)?.map(Number) || [];
+        done(pids.length > 0, pids);
+      }
     );
   } else {
-    exec("pgrep -f 'claude-code|codex|copilot'", { timeout: 3000 },
-      (err) => done(!err)
-    );
+    // macOS: use -i for case-insensitivity
+    const cmd = "pgrep -f -i 'claude-code|codex|copilot|deer-flow|antigravity'";
+    exec(cmd, { timeout: 3000 }, (err, stdout) => {
+      const pids = (stdout || "").trim().split(/\s+/).map(Number).filter(n => !isNaN(n));
+      done(pids.length > 0, pids);
+    });
   }
 }
 
 function startStaleCleanup() {
   if (staleCleanupTimer) return;
-  staleCleanupTimer = setInterval(cleanStaleSessions, 10000); // every 10s
+  staleCleanupTimer = setInterval(cleanStaleSessions, 10000); // legacy 10s cleanup
 }
 
 function stopStaleCleanup() {
@@ -855,10 +1106,22 @@ function stopStaleCleanup() {
 }
 
 function resolveDisplayState() {
-  if (sessions.size === 0) return "idle";
-  let best = "sleeping";
+  const passiveState = startupRecoveryActive ? "working" : "idle";
+
+  if (sessions.size === 0) return passiveState;
+
+  if (focusedSessionId && sessions.has(focusedSessionId)) {
+    const s = sessions.get(focusedSessionId);
+    // If focused session is 'idle', but an agent is running, stay 'working'
+    if (s.state === "idle" && startupRecoveryActive) return passiveState;
+    return s.state;
+  }
+
+  let best = passiveState;
   for (const [, s] of sessions) {
-    if ((STATE_PRIORITY[s.state] || 0) > (STATE_PRIORITY[best] || 0)) best = s.state;
+    if ((STATE_PRIORITY[s.state] || 0) > (STATE_PRIORITY[best] || 0)) {
+       best = s.state;
+    }
   }
   return best;
 }
@@ -872,6 +1135,26 @@ function getActiveWorkingCount() {
 }
 
 function getWorkingSvg() {
+  // Check for explicit depth in sessions
+  let maxDepth = 0;
+  for (const [, s] of sessions) {
+    if ((s.state === "working" || s.state === "thinking" || s.state === "juggling") && s.depth) {
+      if (s.depth > maxDepth) maxDepth = s.depth;
+    }
+  }
+
+  if (maxDepth > 0) {
+    if (maxDepth === 1) return "clawd-working-typing.svg";
+    if (maxDepth === 2) return "clawd-working-thinking.svg";
+    if (maxDepth === 3) return "clawd-working-juggling.svg";
+    if (maxDepth === 4) return "clawd-working-conducting.svg";
+    if (maxDepth === 5) return "clawd-working-building.svg";
+    if (maxDepth === 6) return "clawd-working-ultrathink.svg";
+    if (maxDepth === 7) return "clawd-working-wizard.svg";
+    if (maxDepth >= 8) return "clawd-working-debugger.svg";
+  }
+
+  // Fallback to active session count
   const n = getActiveWorkingCount();
   if (n >= 3) return "clawd-working-building.svg";
   if (n >= 2) return "clawd-working-juggling.svg";
@@ -934,13 +1217,150 @@ function buildSessionSubmenu() {
     const stateText = t(STATE_LABEL_KEY[e.state] || "sessionIdle");
     const name = e.cwd ? path.basename(e.cwd) : (e.id.length > 6 ? e.id.slice(0, 6) + ".." : e.id);
     const elapsed = formatElapsed(now - e.updatedAt);
-    const hasPid = !!e.sourcePid;
+    const action = resolveSessionTerminalAction(e, isProcessAlive);
     return {
       label: `${emoji} ${name}  ${stateText}  ${elapsed}`,
-      enabled: hasPid,
-      click: hasPid ? () => focusTerminalWindow(e.sourcePid, e.cwd, e.editor, e.pidChain) : undefined,
+      enabled: !!action,
+      click: action ? () => runTerminalAction(action) : undefined,
     };
   });
+}
+
+function createSessionsWindow() {
+  if (sessionsWin && !sessionsWin.isDestroyed()) return sessionsWin;
+
+  sessionsWindowLoaded = false;
+  sessionsWindowPendingFlush = true;
+  sessionsWindowLastPayloadKey = "";
+
+  sessionsWin = new BrowserWindow({
+    width: 320,
+    height: 450,
+    show: false,
+    frame: false,
+    transparent: true,
+    scrollBounce: false,
+    alwaysOnTop: true,
+    resizable: false,
+    skipTaskbar: true,
+    webPreferences: {
+      preload: path.join(__dirname, "preload-sessions.js"),
+    },
+  });
+
+  sessionsWin.loadFile(path.join(__dirname, "sessions.html"));
+
+  sessionsWin.webContents.on("did-finish-load", () => {
+    sessionsWindowLoaded = true;
+    if (sessionsWindowPendingFlush || sessionsWin.isVisible()) {
+      updateSessionsWindow({ immediate: true, force: true });
+    }
+  });
+
+  sessionsWin.on("blur", () => {
+    sessionsWin.hide();
+  });
+
+  sessionsWin.on("hide", () => {
+    sessionsWindowPendingFlush = true;
+  });
+
+  sessionsWin.on("show", () => {
+    updateSessionsWindow({ immediate: true, force: true });
+  });
+
+  sessionsWin.on("closed", () => {
+    sessionsWin = null;
+    sessionsWindowLoaded = false;
+    sessionsWindowPendingFlush = false;
+    sessionsWindowLastPayloadKey = "";
+    if (sessionsWindowFlushTimer) {
+      clearTimeout(sessionsWindowFlushTimer);
+      sessionsWindowFlushTimer = null;
+    }
+  });
+
+  return sessionsWin;
+}
+
+/**
+ * Push the latest sessions payload to the window when the renderer is ready.
+ *
+ * @param {{ immediate?: boolean, force?: boolean }} [options]
+ * @returns {void}
+ */
+function updateSessionsWindow(options = {}) {
+  if (!sessionsWin || sessionsWin.isDestroyed()) return;
+
+  const { immediate = false, force = false } = options;
+
+  const flush = () => {
+    sessionsWindowFlushTimer = null;
+    if (!sessionsWin || sessionsWin.isDestroyed()) return;
+    if (!sessionsWindowLoaded || sessionsWin.webContents.isLoadingMainFrame()) {
+      sessionsWindowPendingFlush = true;
+      return;
+    }
+    if (!force && !sessionsWin.isVisible()) {
+      sessionsWindowPendingFlush = true;
+      return;
+    }
+
+    const sessionEntries = [...sessions.entries()];
+    const workspaceRoots = collectWorkspaceRoots({
+      sessionEntries,
+      activeWorkspaceRoots,
+      savedWorkspaceRoots,
+    });
+
+    const payload = buildSessionsWindowPayload({
+      sessionEntries,
+      activeWorkspaceRoots,
+      savedWorkspaceRoots,
+      focusedSessionId,
+      workspaceTaskViews: buildWorkspaceTaskViews(workspaceRoots),
+    });
+    const payloadKey = serializeSessionsWindowPayload(payload);
+    if (!force && payloadKey === sessionsWindowLastPayloadKey) {
+      sessionsWindowPendingFlush = false;
+      return;
+    }
+
+    sessionsWindowPendingFlush = false;
+    sessionsWindowLastPayloadKey = payloadKey;
+    sessionsWin.webContents.send("sessions-update", payload);
+  };
+
+  if (immediate) {
+    if (sessionsWindowFlushTimer) {
+      clearTimeout(sessionsWindowFlushTimer);
+      sessionsWindowFlushTimer = null;
+    }
+    flush();
+    return;
+  }
+
+  sessionsWindowPendingFlush = true;
+  if (sessionsWindowFlushTimer) return;
+  sessionsWindowFlushTimer = setTimeout(flush, SESSION_WINDOW_UPDATE_DEBOUNCE_MS);
+}
+
+function showSessionsWindow() {
+  const win = createSessionsWindow();
+  const cursor = screen.getCursorScreenPoint();
+  
+  // Position near cursor, but within screen bounds
+  const { workArea } = screen.getDisplayNearestPoint(cursor);
+  let x = cursor.x - 160;
+  let y = cursor.y + 10;
+  
+  if (x < workArea.x) x = workArea.x + 10;
+  if (x + 320 > workArea.x + workArea.width) x = workArea.x + workArea.width - 330;
+  if (y + 450 > workArea.y + workArea.height) y = cursor.y - 460;
+
+  win.setPosition(Math.round(x), Math.round(y));
+  win.show();
+  updateSessionsWindow({ immediate: true, force: true });
 }
 
 // ── Do Not Disturb ──
@@ -979,8 +1399,6 @@ function disableDoNotDisturb() {
 // ── Terminal focus (click pet → activate terminal window) ──
 // Uses a persistent PowerShell process to avoid cold-start delay on each click.
 // Add-Type compiles the C# interop once at startup; subsequent focus calls are near-instant.
-const { execFile, spawn } = require("child_process");
-
 const PS_FOCUS_ADDTYPE = `
 Add-Type @"
 using System;
@@ -1198,11 +1616,89 @@ function focusTerminalWindowLegacy(sourcePid, cwd) {
   }
 }
 
+/**
+ * Open a fresh terminal window in the provided workspace.
+ *
+ * @param {string} cwd
+ * @returns {void}
+ */
+function openWorkspaceTerminal(cwd) {
+  if (!cwd) return;
+
+  if (isMac) {
+    const quotedCwd = JSON.stringify(cwd);
+    const script = `
+      set targetCwd to ${quotedCwd}
+      tell application "Terminal"
+        activate
+        do script "cd " & quoted form of targetCwd & " && claude"
+      end tell`;
+    execFile("osascript", ["-e", script], { timeout: 5000 }, (err) => {
+      if (err) console.warn("openWorkspaceTerminal macOS failed:", err.message);
+    });
+    return;
+  }
+
+  if (process.platform === "win32") {
+    spawn("cmd.exe", ["/c", "start", "", "cmd", "/k", `cd /d "${cwd}" && claude`], {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+    }).unref();
+    return;
+  }
+
+  spawn("x-terminal-emulator", ["-e", `cd "${cwd}" && claude`], {
+    detached: true,
+    stdio: "ignore",
+  }).unref();
+}
+
+/**
+ * Execute one resolved terminal action.
+ *
+ * @param {{
+ *   type: "focus-session",
+ *   sessionId: string,
+ *   sourcePid: number,
+ *   cwd: string,
+ *   editor: string | null,
+ *   pidChain: Array<number> | null
+ * } | {
+ *   type: "open-workspace",
+ *   cwd: string
+ * } | null} action
+ * @returns {void}
+ */
+function runTerminalAction(action) {
+  if (!action) return;
+
+  if (action.type === "focus-session") {
+    focusTerminalWindow(action.sourcePid, action.cwd, action.editor, action.pidChain);
+    return;
+  }
+
+  if (action.type === "open-workspace") {
+    openWorkspaceTerminal(action.cwd);
+  }
+}
+
 // ── HTTP server ──
 let httpServer = null;
 
 function startHttpServer() {
   httpServer = http.createServer((req, res) => {
+    // Add CORS headers for web frontend integration
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
     if (req.method === "POST" && req.url === "/state") {
       let body = "";
       let bodySize = 0;
@@ -1225,6 +1721,8 @@ function startHttpServer() {
           const rawAgentPid = data.agent_pid ?? data.claude_pid;
           const agentPid = Number.isFinite(rawAgentPid) && rawAgentPid > 0 ? Math.floor(rawAgentPid) : null;
           const agentId = typeof data.agent_id === "string" ? data.agent_id : "claude-code";
+          const depth = (Number.isInteger(data.depth) && data.depth > 0) ? data.depth : null;
+
           if (STATE_SVGS[state]) {
             const sid = session_id || "default";
             // mini-* states are internal — only allow via direct SVG override (test scripts)
@@ -1250,7 +1748,7 @@ function startHttpServer() {
               const safeSvg = path.basename(svg);
               setState(state, safeSvg);
             } else {
-              updateSession(sid, state, event, source_pid, cwd, editor, pidChain, agentPid, agentId);
+              updateSession(sid, state, event, source_pid, cwd, editor, pidChain, agentPid, agentId, depth);
             }
             res.writeHead(200);
             res.end("ok");
@@ -1262,6 +1760,49 @@ function startHttpServer() {
           res.writeHead(400);
           res.end("bad json");
         }
+      });
+    } else if (req.method === "GET" && req.url === "/state") {
+      const resData = {
+        state: currentState,
+        svg: currentSvg,
+        sessions: Array.from(sessions.entries()).map(([id, s]) => ({ id, ...s })),
+        focusedSessionId
+      };
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(resData));
+    } else if (req.method === "POST" && req.url === "/focus") {
+      let body = "";
+      req.on("data", chunk => { body += chunk; });
+      req.on("end", () => {
+        try {
+          const data = JSON.parse(body);
+          if (data.session_id) {
+            focusedSessionId = data.session_id;
+          } else {
+            focusedSessionId = null;
+          }
+          const resolved = resolveDisplayState();
+          setState(resolved, getSvgOverride(resolved));
+          updateSessionsWindow({ immediate: true });
+          res.writeHead(200);
+          res.end("ok");
+        } catch {
+          res.writeHead(400);
+          res.end("bad json");
+        }
+      });
+    } else if (req.method === "POST" && req.url === "/theme") {
+      let body = "";
+      req.on("data", chunk => { body += chunk; });
+      req.on("end", () => {
+        try {
+          const data = JSON.parse(body);
+          if (data.color) {
+            sendToRenderer("theme-change", data.color);
+          }
+          res.writeHead(200);
+          res.end("ok");
+        } catch { res.writeHead(400); res.end("bad json"); }
       });
     } else if (req.method === "POST" && req.url === "/permission") {
       // ── Permission HTTP hook — Claude Code sends PermissionRequest here ──
@@ -1322,7 +1863,17 @@ function startHttpServer() {
 
   httpServer.on("error", (err) => {
     if (err.code === "EADDRINUSE") {
-      console.warn("Port 23333 is in use — running in idle-only mode (no state sync)");
+      console.warn("Port 23333 is in use — attempting port recovery (killing survivors)...");
+      const { exec } = require("child_process");
+      const cmd = isMac ? "lsof -ti:23333 | xargs kill -9" : "netstat -ano | findstr :23333";
+      exec(cmd, (killErr, stdout) => {
+        if (!killErr) {
+          console.log("Port 23333 recovered. Retrying listen in 1s...");
+          setTimeout(() => httpServer.listen(23333, "127.0.0.1"), 1000);
+        } else {
+          console.error("Critical: Port 23333 recovery failed. State sync will be disabled.");
+        }
+      });
     } else {
       console.error("HTTP server error:", err.message);
     }
@@ -1410,7 +1961,8 @@ function stopTopmostWatchdog() {
 
 // Fallback height before renderer reports actual measurement
 function estimateBubbleHeight(sugCount) {
-  return 200 + (sugCount || 0) * 37;
+  const base = 130 + (sugCount * 45) + (sugCount > 0 ? 40 : 0);
+  return Math.min(base, 600); // Cap at 600px to avoid "steep" windows; bubble.html handles scroll.
 }
 
 function repositionBubbles() {
@@ -1450,6 +2002,7 @@ function showPermissionBubble(permEntry) {
     y: pos.y,
     frame: false,
     transparent: true,
+    scrollBounce: false,
     alwaysOnTop: true,
     resizable: false,
     skipTaskbar: true,
@@ -1465,7 +2018,7 @@ function showPermissionBubble(permEntry) {
   permEntry.bubble = bub;
 
   if (isMac) {
-    bub.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
+    bub.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     bub.setAlwaysOnTop(true, "floating");
   } else {
     bub.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
@@ -1857,6 +2410,7 @@ function ensureContextMenuOwner() {
     show: false,
     frame: false,
     transparent: true,
+    scrollBounce: false,
     alwaysOnTop: true,
     resizable: false,
     skipTaskbar: true,
@@ -1956,6 +2510,7 @@ function createWindow() {
     y: startY,
     frame: false,
     transparent: true,
+    scrollBounce: false,
     alwaysOnTop: true,
     resizable: false,
     skipTaskbar: true,
@@ -1964,12 +2519,13 @@ function createWindow() {
       preload: path.join(__dirname, "preload.js"),
       backgroundThrottling: false,
     },
+    enableLargerThanScreen: true,
   });
 
   win.setFocusable(false);
   if (isMac) {
     // macOS: show on all Spaces (virtual desktops) and use floating window level
-    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
+    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     win.setAlwaysOnTop(true, "floating");
   } else {
     // Windows: use pop-up-menu level to stay above taskbar/shell UI
@@ -1977,6 +2533,11 @@ function createWindow() {
   }
   win.loadFile(path.join(__dirname, "index.html"));
   win.showInactive();
+  syncWindowBoundsCache();
+  win.on("move", () => { syncWindowBoundsCache(); });
+  win.on("moved", () => { syncWindowBoundsCache(); });
+  win.on("resize", () => { syncWindowBoundsCache(); });
+  win.on("resized", () => { syncWindowBoundsCache(); });
 
   // macOS: startup-time dock state can be overridden during app/window activation.
   // Re-apply once on next tick so persisted showDock reliably takes effect.
@@ -1993,21 +2554,47 @@ function createWindow() {
 
   ipcMain.on("show-context-menu", showPetContextMenu);
 
-  ipcMain.on("move-window-by", (event, dx, dy) => {
-    if (miniMode || miniTransitioning) return;
-    const { x, y } = win.getBounds();
+  ipcMain.on("move-window-to", (event, targetX, targetY) => {
+    if (miniTransitioning) return;
+
+    if (miniMode) {
+      if (targetX < currentMiniX) {
+        // Force pop out of mini mode seamlessly without teleportation jump
+        miniMode = false;
+        miniSnap = null;
+        miniSleepPeeked = false;
+        sendToRenderer("mini-mode-change", false);
+        buildContextMenu();
+        buildTrayMenu();
+        if (doNotDisturb) {
+          doNotDisturb = false;
+          sendToRenderer("dnd-change", false);
+        }
+      } else {
+        targetX = currentMiniX;
+        if (miniSnap) miniSnap.y = targetY; // Follow elevator track y-axis
+      }
+    }
+
     const size = SIZES[currentSize];
-    const clamped = clampToScreen(x + dx, y + dy, size.width, size.height);
-    win.setBounds({ ...clamped, width: size.width, height: size.height });
+    const clamped = clampToScreen(targetX, targetY, size.width, size.height);
+    win.setPosition(Math.round(clamped.x), Math.round(clamped.y));
+    syncWindowBoundsCache({ x: Math.round(clamped.x), y: Math.round(clamped.y), width: size.width, height: size.height });
   });
 
   ipcMain.on("pause-cursor-polling", () => { idlePaused = true; });
   ipcMain.on("resume-from-reaction", () => {
     idlePaused = false;
-    // Skip re-send during mini transition (drag-end fires next and will set the right state)
     if (miniTransitioning) return;
-    // Re-send current state to renderer without resetting stateChangedAt or timers.
-    sendToRenderer("state-change", currentState, currentSvg);
+    
+    if (doNotDisturb) {
+      applyState("sleep");
+    } else if (pendingState) {
+      applyState(pendingState);
+    } else {
+      const resolved = resolveDisplayState();
+      applyState(resolved, getSvgOverride(resolved));
+    }
   });
 
   ipcMain.on("drag-lock", (event, locked) => {
@@ -2029,22 +2616,57 @@ function createWindow() {
   });
 
   ipcMain.on("focus-terminal", () => {
-    // Find the best session to focus: prefer highest priority (non-idle), then most recent
-    let best = null, bestTime = 0, bestPriority = -1;
-    for (const [, s] of sessions) {
-      if (!s.sourcePid) continue;
-      const pri = STATE_PRIORITY[s.state] || 0;
-      if (pri > bestPriority || (pri === bestPriority && s.updatedAt > bestTime)) {
-        best = s;
-        bestTime = s.updatedAt;
-        bestPriority = pri;
-      }
-    }
-    if (best) focusTerminalWindow(best.sourcePid, best.cwd, best.editor, best.pidChain);
+    cleanStaleSessions();
+    const action = resolveTerminalAction({
+      sessionEntries: sessions.entries(),
+      focusedSessionId,
+      activeWorkspaceRoots,
+      savedWorkspaceRoots,
+      statePriority: STATE_PRIORITY,
+      isProcessAlive,
+    });
+    runTerminalAction(action);
   });
 
   ipcMain.on("show-session-menu", () => {
-    popupMenuAt(Menu.buildFromTemplate(buildSessionSubmenu()));
+    showSessionsWindow();
+  });
+
+  ipcMain.on("hide-sessions", () => {
+    if (sessionsWin) sessionsWin.hide();
+  });
+
+  ipcMain.on("close-workspace", (event, cwd) => {
+    // End all sessions in this cwd
+    for (const [id, s] of sessions) {
+      if (s.cwd === cwd) {
+        deleteSession(id);
+      }
+    }
+    cleanStaleSessions();
+    updateSessionsWindow();
+  });
+
+  ipcMain.on("new-thread", (event, cwd) => {
+    if (!cwd) return;
+    openWorkspaceTerminal(cwd);
+    if (sessionsWin) sessionsWin.hide();
+  });
+
+  ipcMain.on("focus-thread", (event, sessionId) => {
+    const s = sessions.get(sessionId);
+    focusedSessionId = sessionId;
+    const resolved = resolveDisplayState();
+    setState(resolved, getSvgOverride(resolved));
+    runTerminalAction(s ? resolveSessionTerminalAction({ id: sessionId, ...s }, isProcessAlive) : null);
+    updateSessionsWindow({ immediate: true });
+    if (sessionsWin) sessionsWin.hide();
+  });
+
+  ipcMain.on("close-thread", (event, sessionId) => {
+    deleteSession(sessionId);
+    cleanStaleSessions();
+    updateSessionsWindow();
   });
 
   ipcMain.on("bubble-height", (event, height) => {
@@ -2113,23 +2735,8 @@ function createWindow() {
       const resolved = resolveDisplayState();
       applyState(resolved, getSvgOverride(resolved));
     } else {
-      applyState("idle", SVG_IDLE_FOLLOW);
-      // Startup recovery: delay 5s to let HWND/z-order/drag systems stabilize,
-      // then detect running Claude Code processes → suppress sleep sequence
-      setTimeout(() => {
-        if (sessions.size > 0 || doNotDisturb) return; // hook arrived during wait
-        detectRunningAgentProcesses((found) => {
-          if (found && sessions.size === 0 && !doNotDisturb) {
-            startupRecoveryActive = true;
-            mouseStillSince = Date.now();
-            // Hard timeout: give up if no hooks arrive within 5 min
-            startupRecoveryTimer = setTimeout(() => {
-              startupRecoveryActive = false;
-              startupRecoveryTimer = null;
-            }, STARTUP_RECOVERY_MAX_MS);
-          }
-        });
-      }, 5000);
+      const resolved = resolveDisplayState();
+      applyState(resolved, getSvgOverride(resolved));
     }
   });
 
@@ -2179,10 +2786,10 @@ function createWindow() {
 
 function getNearestWorkArea(cx, cy) {
   const displays = screen.getAllDisplays();
-  let nearest = displays[0].workArea;
+  let nearest = displays[0].bounds;
   let minDist = Infinity;
   for (const d of displays) {
-    const wa = d.workArea;
+    const wa = d.bounds;
     const dx = Math.max(wa.x - cx, 0, cx - (wa.x + wa.width));
     const dy = Math.max(wa.y - cy, 0, cy - (wa.y + wa.height));
     const dist = dx * dx + dy * dy;
@@ -2193,13 +2800,10 @@ function getNearestWorkArea(cx, cy) {
 
 function clampToScreen(x, y, w, h) {
   const nearest = getNearestWorkArea(x + w / 2, y + h / 2);
-  const mLeft  = Math.round(w * 0.25);
-  const mRight = Math.round(w * 0.25);
-  const mTop   = Math.round(h * 0.6);
-  const mBot   = Math.round(h * 0.04);
+  const overflow = getObjectOverflowMargins(w, h);
   return {
-    x: Math.max(nearest.x - mLeft, Math.min(x, nearest.x + nearest.width - w + mRight)),
-    y: Math.max(nearest.y - mTop,  Math.min(y, nearest.y + nearest.height - h + mBot)),
+    x: Math.max(nearest.x - overflow.left, Math.min(x, nearest.x + nearest.width - w + overflow.right)),
+    y: Math.max(nearest.y - overflow.top, Math.min(y, nearest.y + nearest.height - h + overflow.bottom)),
   };
 }
 
@@ -2274,6 +2878,12 @@ function miniPeekOut() {
 function cancelMiniTransition() {
   miniTransitioning = false;
   if (miniTransitionTimer) { clearTimeout(miniTransitionTimer); miniTransitionTimer = null; }
+  if (pendingState) {
+    applyState(pendingState);
+  } else {
+    const resolved = resolveDisplayState();
+    applyState(resolved, getSvgOverride(resolved));
+  }
 }
 
 function checkMiniModeSnap() {
@@ -2285,7 +2895,7 @@ function checkMiniModeSnap() {
   const centerX = bounds.x + size.width / 2;
   const displays = screen.getAllDisplays();
   for (const d of displays) {
-    const wa = d.workArea;
+    const wa = d.bounds;
     const centerY = bounds.y + size.height / 2;
     if (centerX < wa.x || centerX > wa.x + wa.width) continue;
     if (centerY < wa.y || centerY > wa.y + wa.height) continue;
@@ -2380,6 +2990,8 @@ function exitMiniMode() {
       buildContextMenu();
       buildTrayMenu();
       applyState("waking");
+    } else if (pendingState) {
+      applyState(pendingState);
     } else {
       const resolved = resolveDisplayState();
       applyState(resolved, getSvgOverride(resolved));
@@ -2557,12 +3169,9 @@ if (!gotTheLock) {
     if (win) win.showInactive();
   });
 
-  // macOS: hide dock icon early if user previously disabled it
+  // macOS: hide dock icon so it runs as a background assistant
   if (isMac && app.dock) {
-    const prefs = loadPrefs();
-    if (prefs && prefs.showDock === false) {
-      app.dock.hide();
-    }
+    app.dock.hide();
   }
 
   app.whenReady().then(() => {
@@ -2578,11 +3187,14 @@ if (!gotTheLock) {
       console.warn("Clawd: failed to auto-register hooks:", err.message);
     }
 
-    // Start Codex CLI JSONL log monitor
     try {
       const CodexLogMonitor = require("../agents/codex-log-monitor");
       const codexAgent = require("../agents/codex");
       _codexMonitor = new CodexLogMonitor(codexAgent, (sid, state, event, extra) => {
+        if (extra && extra.cwd && activeWorkspaceRoots.length > 0) {
+          const isActive = activeWorkspaceRoots.some(root => extra.cwd.startsWith(root));
+          if (!isActive && !codexAgent.globalMode) return;
+        }
         updateSession(sid, state, event, extra.sourcePid, extra.cwd, null, null, extra.agentPid, "codex");
       });
       _codexMonitor.start();
@@ -2590,10 +3202,24 @@ if (!gotTheLock) {
       console.warn("Clawd: Codex log monitor not started:", err.message);
     }
 
+    // Start global workspace state monitor
+    try { startGlobalStateMonitor(); } catch (err) {
+      console.warn("Clawd: global state monitor not started:", err.message);
+    }
+
     // Auto-install VS Code/Cursor terminal-focus extension
     try { installTerminalFocusExtension(); } catch (err) {
       console.warn("Clawd: failed to auto-install terminal-focus extension:", err.message);
     }
+
+    // Global agent detection watchdog
+    setInterval(() => {
+      detectRunningAgentProcesses((found) => {
+        startupRecoveryActive = found;
+        const resolved = resolveDisplayState();
+        setState(resolved, getSvgOverride(resolved));
+      });
+    }, 5000);
 
     // Auto-updater: setup event handlers + silent check after 5s
     setupAutoUpdater();
@@ -2605,7 +3231,7 @@ if (!gotTheLock) {
     savePrefs();
     if (pendingTimer) clearTimeout(pendingTimer);
     if (autoReturnTimer) clearTimeout(autoReturnTimer);
-    if (mainTickTimer) clearInterval(mainTickTimer);
+    stopMainTick();
     if (wakePollTimer) clearInterval(wakePollTimer);
     if (miniTransitionTimer) clearTimeout(miniTransitionTimer);
     if (peekAnimTimer) clearTimeout(peekAnimTimer);

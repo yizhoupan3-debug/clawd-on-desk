@@ -17,6 +17,7 @@ class CodexLogMonitor {
     this._interval = null;
     // Map<filePath, { offset, sessionId, cwd, lastEventTime, lastState, partial }>
     this._tracked = new Map();
+    this._watchers = new Map();
     this._baseDir = this._resolveBaseDir();
   }
 
@@ -34,7 +35,7 @@ class CodexLogMonitor {
     this._poll();
     this._interval = setInterval(
       () => this._poll(),
-      this._config.logConfig.pollIntervalMs || 1500
+      this._config.logConfig.pollIntervalMs || 3000
     );
   }
 
@@ -43,12 +44,53 @@ class CodexLogMonitor {
       clearInterval(this._interval);
       this._interval = null;
     }
+    for (const watcher of this._watchers.values()) {
+      try { watcher.close(); } catch (e) {}
+    }
+    this._watchers.clear();
     this._tracked.clear();
+  }
+
+  /**
+   * Decide whether a JSONL file should be polled.
+   *
+   * @param {string} filePath - Absolute path to the rollout JSONL file.
+   * @returns {boolean} True when the file is already tracked or still fresh enough.
+   */
+  _shouldPollFile(filePath) {
+    if (this._tracked.has(filePath)) return true;
+    try {
+      const mtime = fs.statSync(filePath).mtimeMs;
+      return Date.now() - mtime <= 120000;
+    } catch {
+      return false;
+    }
   }
 
   _poll() {
     const dirs = this._getSessionDirs();
     for (const dir of dirs) {
+      // Setup watcher if not already watching
+      if (!this._watchers.has(dir)) {
+        try {
+          if (fs.existsSync(dir)) {
+            const watcher = fs.watch(dir, (eventType, filename) => {
+              if (filename && filename.startsWith("rollout-") && filename.endsWith(".jsonl")) {
+                const filePath = path.join(dir, filename);
+                if (this._shouldPollFile(filePath)) {
+                  this._pollFile(filePath, filename);
+                }
+              }
+            });
+            watcher.on("error", () => {
+              watcher.close();
+              this._watchers.delete(dir);
+            });
+            this._watchers.set(dir, watcher);
+          }
+        } catch (e) {}
+      }
+
       let files;
       try {
         files = fs.readdirSync(dir);
@@ -60,12 +102,7 @@ class CodexLogMonitor {
         if (!file.startsWith("rollout-") || !file.endsWith(".jsonl")) continue;
         const filePath = path.join(dir, file);
         // Skip files we're not already tracking if they haven't been written recently
-        if (!this._tracked.has(filePath)) {
-          try {
-            const mtime = fs.statSync(filePath).mtimeMs;
-            if (now - mtime > 120000) continue; // older than 2 min — completed session, skip
-          } catch { continue; }
-        }
+        if (!this._shouldPollFile(filePath)) continue;
         this._pollFile(filePath, file);
       }
     }

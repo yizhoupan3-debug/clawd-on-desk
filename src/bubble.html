@@ -8,7 +8,7 @@
 
 /* ── Theme variables ── */
 :root {
-  --ease-spring: var(--ease-spring);
+  --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
   --card-bg: #ffffff;
   --card-border: rgba(0, 0, 0, 0.08);
   --card-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
@@ -68,6 +68,7 @@ html, body {
   margin: 0;
   background: transparent;
   overflow: hidden;
+  overscroll-behavior: none;
   user-select: none;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -196,9 +197,131 @@ body { padding: 6px; }
 
 /* ── Suggestion buttons (dynamic) ── */
 .suggestions {
+  margin-top: 15px;
   display: flex;
   flex-direction: column;
+  gap: 8px;
+  max-height: 380px; /* Cap suggestion list height; bubble window is capped at 600px total */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px; /* Space for scrollbar */
+}
+
+/* ── Antigravity & Markdown Aesthetic ── */
+.command-block {
+  max-height: none; /* Allow content to dictate height, parent handles overflow if needed */
+  overflow-y: visible;
+}
+
+/* Thinking Accordion (details/summary) */
+details {
+  border: 1px solid var(--cmd-border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  background: rgba(0, 0, 0, 0.02);
+  transition: all 0.2s ease;
+}
+@media (prefers-color-scheme: dark) {
+  details { background: rgba(255, 255, 255, 0.02); }
+}
+details[open] {
+  background: transparent;
+  border-color: var(--cmd-border);
+}
+summary {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--header-color);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+summary::-webkit-details-marker { display: none; }
+summary::before {
+  content: '▶';
+  font-size: 8px;
+  transition: transform 0.2s ease;
+  color: var(--sug-arrow);
+}
+details[open] summary::before {
+  transform: rotate(90deg);
+}
+.think-content {
+  padding: 0 12px 10px 28px;
+  font-size: 11.5px;
+  color: var(--cmd-color);
+  opacity: 0.8;
+  line-height: 1.6;
+}
+
+/* GitHub-style Alerts */
+.markdown-alert {
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  border-left: 4px solid #d1d5db;
+  border-radius: 2px 6px 6px 2px;
+  background: rgba(0, 0, 0, 0.01);
+}
+.markdown-alert-title {
+  display: flex;
+  align-items: center;
   gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  text-transform: capitalize;
+}
+.markdown-alert-note { border-left-color: #0969da; }
+.markdown-alert-note .markdown-alert-title { color: #0969da; }
+.markdown-alert-tip { border-left-color: #1a7f37; }
+.markdown-alert-tip .markdown-alert-title { color: #1a7f37; }
+.markdown-alert-important { border-left-color: #8250df; }
+.markdown-alert-important .markdown-alert-title { color: #8250df; }
+.markdown-alert-warning { border-left-color: #9a6700; }
+.markdown-alert-warning .markdown-alert-title { color: #9a6700; }
+.markdown-alert-caution { border-left-color: #cf222e; }
+.markdown-alert-caution .markdown-alert-title { color: #cf222e; }
+
+/* Inline components */
+code {
+  font-family: inherit;
+  background: rgba(0, 0, 0, 0.05);
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+@media (prefers-color-scheme: dark) {
+  code { background: rgba(255, 255, 255, 0.1); }
+}
+pre {
+  margin: 8px 0;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 6px;
+  overflow-x: auto;
+}
+@media (prefers-color-scheme: dark) {
+  pre { background: rgba(0, 0, 0, 0.3); }
+}
+
+/* Custom scrollbar for premium look */
+.suggestions::-webkit-scrollbar {
+  width: 4px;
+}
+.suggestions::-webkit-scrollbar-track {
+  background: transparent;
+}
+.suggestions::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+.suggestions::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .btn-suggestion {
@@ -263,7 +386,56 @@ body { padding: 6px; }
 </div>
 
 <script>
-// ⚠️ 以下 JS 完全没有修改，这是原版完整的功能逻辑
+// ── Antigravity Markdown Renderer ──
+function escapeHtml(unsafe) {
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function renderAntigravityMarkdown(text) {
+  if (!text) return "";
+
+  // 1. Handle Thinking Accordions (<details><summary>...</summary>...</details>)
+  let html = text.replace(/<details>\s*<summary>(.*?)<\/summary>([\s\S]*?)<\/details>/gi, (match, summary, content) => {
+    return `<details><summary>${escapeHtml(summary)}</summary><div class="think-content">${escapeHtml(content.trim())}</div></details>`;
+  });
+
+  // 2. Handle GitHub Alerts (> [!NOTE])
+  const alertTypes = ['NOTE', 'TIP', 'IMPORTANT', 'WARNING', 'CAUTION'];
+  alertTypes.forEach(type => {
+    const regex = new RegExp(`^> \\[\\!${type}\\]\\s*([\\s\\S]*?)(?=\\n>|\\n\\n|$)`, 'gm');
+    html = html.replace(regex, (match, content) => {
+      return `<div class="markdown-alert markdown-alert-${type.toLowerCase()}"><div class="markdown-alert-title">${type}</div>${escapeHtml(content.trim())}</div>`;
+    });
+  });
+
+  // 3. Handle Code Blocks (```...```)
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
+    return `<pre><code>${escapeHtml(code.trim())}</code></pre>`;
+  });
+
+  // 4. Handle Inline Code (`...`)
+  html = html.replace(/`([^`]+)`/g, (match, code) => {
+    return `<code>${escapeHtml(code)}</code>`;
+  });
+
+  // 5. Handle Bold/Italic
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+  // 6. If no blocks were matched and it contains HTML-like chars, it's just plain text with newlines
+  if (html === text) {
+    return escapeHtml(text).replace(/\n/g, '<br>');
+  }
+
+  // Final cleanup: preserve some newlines but flatten others to keep bubble compact
+  return html.replace(/\n\n/g, '<br><br>').replace(/\n/g, ' ');
+}
+
 const card = document.getElementById("card");
 const toolPill = document.getElementById("toolPill");
 const commandBlock = document.getElementById("commandBlock");
@@ -273,15 +445,25 @@ const suggestionsContainer = document.getElementById("suggestions");
 
 function formatDetail(name, input) {
   if (!input || typeof input !== "object") return "";
-  if (name === "Bash" && input.command) return truncate(input.command, 120);
+  
+  // Preference for 'command', 'file_path', or 'pattern' but without strict truncation
+  // because we want to see the MD structures if they are present.
+  if (name === "Bash" && input.command) return input.command;
   if ((name === "Edit" || name === "Write" || name === "Read") && input.file_path)
-    return truncate(input.file_path, 120);
+    return input.file_path;
   if ((name === "Glob" || name === "Grep") && input.pattern)
-    return truncate(input.pattern, 120);
+    return input.pattern;
+
+  // Search for any string that looks like it might contain Antigravity MD
   for (const v of Object.values(input)) {
-    if (typeof v === "string") return truncate(v, 100);
+    if (typeof v === "string" && (v.includes('<details>') || v.includes('> [!'))) return v;
   }
-  return truncate(JSON.stringify(input), 100);
+  
+  // Fallback to first string or JSON
+  for (const v of Object.values(input)) {
+    if (typeof v === "string") return truncate(v, 200);
+  }
+  return truncate(JSON.stringify(input), 200);
 }
 
 function truncate(s, max) {
@@ -296,7 +478,6 @@ function getSuggestionLabel(s, lang) {
     return s.mode;
   }
   if (s.type === "addRules") {
-    // Support both flat (toolName/ruleContent) and nested (rules:[]) formats
     const rule = Array.isArray(s.rules) && s.rules[0] ? s.rules[0] : s;
     const rc = rule.ruleContent || s.ruleContent;
     const tn = rule.toolName || s.toolName || "";
@@ -323,8 +504,9 @@ function show(data) {
   toolPill.textContent = data.toolName || "Unknown";
   toolPill.setAttribute("data-tool", data.toolName || "");
 
-  // Command block (textContent only — never innerHTML)
-  commandBlock.textContent = formatDetail(data.toolName, data.toolInput);
+  // Command block (textContent only — now using innerHTML with SANITIZED MD)
+  const content = formatDetail(data.toolName, data.toolInput);
+  commandBlock.innerHTML = renderAntigravityMarkdown(content);
 
   // Button labels
   btnAllow.textContent = data.lang === "zh" ? "\u6279\u51C6" : "Allow";
