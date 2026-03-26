@@ -1761,6 +1761,31 @@ function copyWorkspacePath(options) {
 }
 
 /**
+ * Open one workspace entry in the host environment.
+ *
+ * @param {{ cwd: string, relativePath: string }} options - Workspace root and entry path.
+ * @returns {Promise<{ relativePath: string }>} Opened entry summary.
+ */
+async function openWorkspaceEntry(options) {
+  const { targetPath, normalizedRelativePath } = resolveWorkspacePath(options);
+  if (!normalizedRelativePath) {
+    throw new Error("A file or folder must be selected before opening.");
+  }
+  if (!fs.existsSync(targetPath)) {
+    throw new Error("The selected entry no longer exists.");
+  }
+
+  const openError = await shell.openPath(targetPath);
+  if (openError) {
+    throw new Error(openError);
+  }
+
+  return {
+    relativePath: normalizedRelativePath,
+  };
+}
+
+/**
  * Create a file or folder inside the workspace tree.
  *
  * @param {{ cwd: string, parentRelativePath?: string | null, name: string, kind: "file" | "directory" }} options - Creation target and entry metadata.
@@ -3310,6 +3335,10 @@ function createWindow() {
 
   ipcMain.handle("workspace-tree:path:copy", async (event, options) => {
     return copyWorkspacePath(options);
+  });
+
+  ipcMain.handle("workspace-tree:open", async (event, options) => {
+    return openWorkspaceEntry(options);
   });
 
   ipcMain.handle("workspace-file:read", async (event, options) => {

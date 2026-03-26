@@ -913,6 +913,379 @@
     .status-dot.thinking { background: var(--accent); box-shadow: 0 0 8px rgba(88, 166, 255, 0.4); }
     .status-dot.error { background: var(--danger); box-shadow: 0 0 8px rgba(248, 81, 73, 0.4); }
 
+    .workspace-document-panel {
+      min-width: 0;
+      min-height: 420px;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      background: rgba(0,0,0,0.18);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+    }
+
+    .workspace-document-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      background: rgba(255,255,255,0.02);
+    }
+
+    .workspace-document-title-wrap {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .workspace-document-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      font-size: 13px;
+      font-weight: 700;
+      color: #ffffff;
+    }
+
+    .workspace-document-title-name {
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .workspace-document-badge {
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      background: rgba(88, 166, 255, 0.16);
+      color: #9bc9ff;
+      text-transform: uppercase;
+      flex: 0 0 auto;
+    }
+
+    .workspace-document-badge.dirty {
+      background: rgba(248, 81, 73, 0.16);
+      color: #ffb4ae;
+    }
+
+    .workspace-document-path {
+      font-size: 11px;
+      color: rgba(224,224,224,0.56);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .workspace-document-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      flex: 0 0 auto;
+    }
+
+    .workspace-document-button {
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.04);
+      color: rgba(224,224,224,0.92);
+      border-radius: 10px;
+      padding: 7px 12px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.18s ease;
+    }
+
+    .workspace-document-button:hover {
+      background: rgba(88, 166, 255, 0.16);
+      border-color: rgba(88, 166, 255, 0.28);
+      color: #fff;
+    }
+
+    .workspace-document-button.primary {
+      background: rgba(88, 166, 255, 0.18);
+      border-color: rgba(88, 166, 255, 0.32);
+      color: #ffffff;
+    }
+
+    .workspace-document-button.active {
+      background: rgba(88, 166, 255, 0.16);
+      border-color: rgba(88, 166, 255, 0.28);
+      color: #fff;
+    }
+
+    .workspace-document-button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .workspace-document-status {
+      padding: 0 16px 12px;
+      font-size: 10px;
+      color: rgba(224,224,224,0.58);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .workspace-document-status.error {
+      color: #ff9b95;
+    }
+
+    .workspace-document-surface {
+      display: flex;
+      flex-direction: column;
+      min-height: 300px;
+      flex: 1;
+      background: rgba(8, 8, 8, 0.16);
+    }
+
+    .workspace-editor-toolbar,
+    .workspace-pdf-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding: 10px 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      background: rgba(255,255,255,0.02);
+    }
+
+    .workspace-editor-toolbar-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding-right: 10px;
+      margin-right: 2px;
+      border-right: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .workspace-editor-toolbar-group:last-child {
+      padding-right: 0;
+      margin-right: 0;
+      border-right: 0;
+    }
+
+    .workspace-toolbar-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.04);
+      color: rgba(224,224,224,0.82);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.18s ease;
+    }
+
+    .workspace-toolbar-btn:hover,
+    .workspace-toolbar-btn[data-active="true"] {
+      background: rgba(88, 166, 255, 0.16);
+      border-color: rgba(88, 166, 255, 0.28);
+      color: #fff;
+    }
+
+    .workspace-toolbar-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .workspace-toolbar-btn svg {
+      width: 15px;
+      height: 15px;
+      fill: currentColor;
+    }
+
+    .workspace-editor-shell {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      flex: 1;
+      min-height: 320px;
+    }
+
+    .workspace-editor-gutter {
+      min-width: 48px;
+      padding: 12px 8px 12px 12px;
+      border-right: 1px solid rgba(255,255,255,0.06);
+      background: rgba(255,255,255,0.02);
+      color: rgba(224,224,224,0.34);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+      line-height: 20px;
+      text-align: right;
+      user-select: none;
+      overflow: hidden;
+    }
+
+    .workspace-editor-textarea {
+      width: 100%;
+      min-height: 320px;
+      resize: none;
+      border: 0;
+      outline: none;
+      background: transparent;
+      color: var(--text);
+      padding: 12px 16px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 13px;
+      line-height: 20px;
+      overflow: auto;
+      white-space: pre;
+      tab-size: 2;
+    }
+
+    .workspace-editor-textarea.markdown-mode {
+      font-family: "SF Mono", ui-monospace, Menlo, monospace;
+    }
+
+    .workspace-document-preview {
+      flex: 1;
+      overflow: auto;
+      padding: 18px 20px 20px;
+      color: rgba(224,224,224,0.92);
+      line-height: 1.7;
+      user-select: text;
+    }
+
+    .workspace-document-preview h1,
+    .workspace-document-preview h2,
+    .workspace-document-preview h3,
+    .workspace-document-preview h4 {
+      margin: 1.2em 0 0.55em;
+      line-height: 1.3;
+      color: #fff;
+    }
+
+    .workspace-document-preview p,
+    .workspace-document-preview ul,
+    .workspace-document-preview ol,
+    .workspace-document-preview pre,
+    .workspace-document-preview blockquote {
+      margin: 0 0 14px;
+    }
+
+    .workspace-document-preview ul,
+    .workspace-document-preview ol {
+      padding-left: 22px;
+    }
+
+    .workspace-document-preview blockquote {
+      padding-left: 14px;
+      border-left: 3px solid rgba(88, 166, 255, 0.35);
+      color: rgba(224,224,224,0.72);
+    }
+
+    .workspace-document-preview pre {
+      padding: 14px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.04);
+      overflow: auto;
+    }
+
+    .workspace-document-preview code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      background: rgba(255,255,255,0.06);
+      border-radius: 6px;
+      padding: 2px 6px;
+    }
+
+    .workspace-document-preview pre code {
+      background: transparent;
+      padding: 0;
+    }
+
+    .workspace-document-preview hr {
+      border: 0;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      margin: 18px 0;
+    }
+
+    .workspace-document-preview a {
+      color: #9bc9ff;
+    }
+
+    .workspace-document-empty,
+    .workspace-document-loading {
+      padding: 32px 24px;
+      color: var(--text-dim);
+      line-height: 1.7;
+    }
+
+    .workspace-document-loading {
+      font-style: italic;
+    }
+
+    .workspace-pdf-toolbar {
+      justify-content: space-between;
+    }
+
+    .workspace-pdf-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .workspace-pdf-page-input {
+      width: 54px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.04);
+      color: rgba(224,224,224,0.92);
+      border-radius: 10px;
+      padding: 6px 8px;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .workspace-pdf-count,
+    .workspace-pdf-zoom {
+      font-size: 11px;
+      color: rgba(224,224,224,0.72);
+      min-width: 44px;
+    }
+
+    .workspace-pdf-frame {
+      flex: 1;
+      min-height: 420px;
+      width: 100%;
+      border: 0;
+      background: rgba(255,255,255,0.02);
+    }
+
+    .workspace-compile-log {
+      margin: 0 16px 16px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.06);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      overflow: auto;
+      max-height: 140px;
+      color: rgba(224,224,224,0.75);
+    }
+
+    .workspace-activity-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
     .empty-hint {
       padding: 40px 20px;
       text-align: center;
@@ -961,8 +1334,21 @@
     const WORKSPACE_TREE_EXPANDED_ICON = '▾';
     const WORKSPACE_TREE_COLLAPSED_ICON = '▸';
     const WORKSPACE_TREE_STATE = new Map();
+    const WORKSPACE_DOCUMENT_STATE = new Map();
     let workspaceTreeMenuEl = null;
     let workspaceTreeMenuCloseHandler = null;
+    const DOCUMENT_EMPTY_HINT = 'Select a file from the workspace tree to open the embedded workbench.';
+    const PDF_PRESET_ZOOMS = [70, 85, 100, 125, 150, 175];
+    const MARKDOWN_TOOLBAR_ITEMS = [
+      { title: 'Heading', label: 'H', action: (textarea) => applyLinePrefix(textarea, '# ') },
+      { title: 'Bold', label: 'B', action: (textarea) => wrapTextareaSelection(textarea, '**', '**', 'bold text') },
+      { title: 'Italic', label: 'I', action: (textarea) => wrapTextareaSelection(textarea, '*', '*', 'italic text') },
+      { title: 'List', label: '•', action: (textarea) => applyLinePrefix(textarea, '- ') },
+      { title: 'Checklist', label: '☑', action: (textarea) => applyLinePrefix(textarea, '- [ ] ') },
+      { title: 'Quote', label: '❞', action: (textarea) => applyLinePrefix(textarea, '> ') },
+      { title: 'Link', label: '🔗', action: (textarea) => wrapTextareaSelection(textarea, '[', '](https://example.com)', 'link text') },
+      { title: 'Code', label: '</>', action: (textarea) => wrapTextareaSelection(textarea, '`', '`', 'code') },
+    ];
 
     /**
      * Normalize the IPC payload into the renderer shape.
@@ -1195,6 +1581,301 @@
       state.cwd = nextCwd;
       WORKSPACE_TREE_STATE.set(workspaceKey, state);
       return state;
+    }
+
+    /**
+     * Create one workbench state bucket for a workspace.
+     *
+     * @param {string} workspaceKey
+     * @param {string} cwd
+     * @returns {object}
+     */
+    function createWorkspaceDocumentState(workspaceKey, cwd) {
+      return {
+        workspaceKey,
+        cwd,
+        activeRelativePath: '',
+        document: null,
+        draftContent: '',
+        lastSavedContent: '',
+        dirty: false,
+        loading: false,
+        saving: false,
+        compiling: false,
+        error: '',
+        statusMessage: '',
+        previewMode: 'edit',
+        pdfView: {
+          page: 1,
+          pageCount: null,
+          zoom: 100,
+        },
+        texCompileResult: null,
+      };
+    }
+
+    /**
+     * Resolve or create one workbench state bucket for a workspace.
+     *
+     * @param {string} workspaceKey
+     * @param {string} cwd
+     * @returns {object}
+     */
+    function ensureWorkspaceDocumentState(workspaceKey, cwd) {
+      const nextCwd = typeof cwd === 'string' ? cwd : '';
+      const state = WORKSPACE_DOCUMENT_STATE.get(workspaceKey) || createWorkspaceDocumentState(workspaceKey, nextCwd);
+      state.cwd = nextCwd;
+      WORKSPACE_DOCUMENT_STATE.set(workspaceKey, state);
+      return state;
+    }
+
+    /**
+     * Return whether the active document should render with a line-number gutter.
+     *
+     * @param {object | null} document
+     * @returns {boolean}
+     */
+    function shouldShowDocumentLineNumbers(document) {
+      return document?.mode === 'code' || document?.mode === 'tex';
+    }
+
+    /**
+     * Escape a text fragment for safe HTML interpolation.
+     *
+     * @param {string} value
+     * @returns {string}
+     */
+    function escapeHtml(value) {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    /**
+     * Render a compact inline Markdown subset into trusted HTML.
+     *
+     * @param {string} value
+     * @returns {string}
+     */
+    function renderInlineMarkdownHtml(value) {
+      let html = escapeHtml(value);
+      html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+      html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+      html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+      html = html.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+      html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+      return html;
+    }
+
+    /**
+     * Build one Markdown preview fragment from raw editor text.
+     *
+     * @param {string} value
+     * @returns {DocumentFragment}
+     */
+    function buildMarkdownPreviewFragment(value) {
+      const fragment = document.createDocumentFragment();
+      const lines = String(value || '').replace(/\r\n/g, '\n').split('\n');
+      let index = 0;
+
+      while (index < lines.length) {
+        const line = lines[index];
+        if (!line.trim()) {
+          index += 1;
+          continue;
+        }
+
+        const fenceMatch = line.match(/^```(.*)$/);
+        if (fenceMatch) {
+          const content = [];
+          index += 1;
+          while (index < lines.length && !/^```/.test(lines[index])) {
+            content.push(lines[index]);
+            index += 1;
+          }
+          const pre = document.createElement('pre');
+          const code = document.createElement('code');
+          code.textContent = content.join('\n');
+          pre.appendChild(code);
+          fragment.appendChild(pre);
+          index += 1;
+          continue;
+        }
+
+        const headingMatch = line.match(/^(#{1,4})\s+(.+)$/);
+        if (headingMatch) {
+          const heading = document.createElement(`h${headingMatch[1].length}`);
+          heading.innerHTML = renderInlineMarkdownHtml(headingMatch[2]);
+          fragment.appendChild(heading);
+          index += 1;
+          continue;
+        }
+
+        if (/^---+$/.test(line.trim()) || /^\*\*\*+$/.test(line.trim())) {
+          fragment.appendChild(document.createElement('hr'));
+          index += 1;
+          continue;
+        }
+
+        if (/^>\s?/.test(line)) {
+          const quoteLines = [];
+          while (index < lines.length && /^>\s?/.test(lines[index])) {
+            quoteLines.push(lines[index].replace(/^>\s?/, ''));
+            index += 1;
+          }
+          const blockquote = document.createElement('blockquote');
+          blockquote.innerHTML = renderInlineMarkdownHtml(quoteLines.join(' '));
+          fragment.appendChild(blockquote);
+          continue;
+        }
+
+        if (/^(\s*[-*]\s+|\s*\d+\.\s+)/.test(line)) {
+          const ordered = /^\s*\d+\.\s+/.test(line);
+          const list = document.createElement(ordered ? 'ol' : 'ul');
+          while (index < lines.length && /^(\s*[-*]\s+|\s*\d+\.\s+)/.test(lines[index])) {
+            const item = document.createElement('li');
+            item.innerHTML = renderInlineMarkdownHtml(lines[index].replace(/^(\s*[-*]\s+|\s*\d+\.\s+)/, ''));
+            list.appendChild(item);
+            index += 1;
+          }
+          fragment.appendChild(list);
+          continue;
+        }
+
+        const paragraphLines = [];
+        while (index < lines.length && lines[index].trim() && !/^(#{1,4})\s+/.test(lines[index]) && !/^```/.test(lines[index]) && !/^>\s?/.test(lines[index]) && !/^(\s*[-*]\s+|\s*\d+\.\s+)/.test(lines[index]) && !/^---+$/.test(lines[index].trim()) && !/^\*\*\*+$/.test(lines[index].trim())) {
+          paragraphLines.push(lines[index].trim());
+          index += 1;
+        }
+        const paragraph = document.createElement('p');
+        paragraph.innerHTML = renderInlineMarkdownHtml(paragraphLines.join(' '));
+        fragment.appendChild(paragraph);
+      }
+
+      if (!fragment.childNodes.length) {
+        const empty = document.createElement('div');
+        empty.className = 'workspace-document-empty';
+        empty.textContent = 'Markdown preview is empty.';
+        fragment.appendChild(empty);
+      }
+
+      return fragment;
+    }
+
+    /**
+     * Apply one textarea replacement while preserving selection and dispatching input.
+     *
+     * @param {HTMLTextAreaElement} textarea
+     * @param {string} nextValue
+     * @param {number} selectionStart
+     * @param {number} selectionEnd
+     * @returns {void}
+     */
+    function commitTextareaEdit(textarea, nextValue, selectionStart, selectionEnd) {
+      textarea.value = nextValue;
+      textarea.focus();
+      textarea.setSelectionRange(selectionStart, selectionEnd);
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    /**
+     * Wrap the current textarea selection with prefix and suffix.
+     *
+     * @param {HTMLTextAreaElement} textarea
+     * @param {string} prefix
+     * @param {string} suffix
+     * @param {string} placeholder
+     * @returns {void}
+     */
+    function wrapTextareaSelection(textarea, prefix, suffix, placeholder) {
+      const start = textarea.selectionStart || 0;
+      const end = textarea.selectionEnd || 0;
+      const rawValue = textarea.value || '';
+      const selected = rawValue.slice(start, end) || placeholder;
+      const nextValue = `${rawValue.slice(0, start)}${prefix}${selected}${suffix}${rawValue.slice(end)}`;
+      const nextStart = start + prefix.length;
+      const nextEnd = nextStart + selected.length;
+      commitTextareaEdit(textarea, nextValue, nextStart, nextEnd);
+    }
+
+    /**
+     * Prefix each selected line in the textarea with one marker.
+     *
+     * @param {HTMLTextAreaElement} textarea
+     * @param {string} prefix
+     * @returns {void}
+     */
+    function applyLinePrefix(textarea, prefix) {
+      const start = textarea.selectionStart || 0;
+      const end = textarea.selectionEnd || 0;
+      const rawValue = textarea.value || '';
+      const blockStart = rawValue.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
+      const blockEndIndex = rawValue.indexOf('\n', end);
+      const blockEnd = blockEndIndex === -1 ? rawValue.length : blockEndIndex;
+      const target = rawValue.slice(blockStart, blockEnd);
+      const nextBlock = target
+        .split('\n')
+        .map((line) => `${prefix}${line}`)
+        .join('\n');
+      const nextValue = `${rawValue.slice(0, blockStart)}${nextBlock}${rawValue.slice(blockEnd)}`;
+      commitTextareaEdit(textarea, nextValue, blockStart, blockStart + nextBlock.length);
+    }
+
+    /**
+     * Update one editor gutter to match the current line count.
+     *
+     * @param {HTMLElement | null} gutterEl
+     * @param {string} value
+     * @returns {void}
+     */
+    function syncWorkspaceEditorGutter(gutterEl, value) {
+      if (!gutterEl) return;
+      const lineCount = Math.max(1, String(value || '').split('\n').length);
+      const fragment = document.createDocumentFragment();
+      for (let index = 0; index < lineCount; index += 1) {
+        const line = document.createElement('div');
+        line.textContent = String(index + 1);
+        fragment.appendChild(line);
+      }
+      gutterEl.replaceChildren(fragment);
+    }
+
+    /**
+     * Refresh the header controls bound to one workbench instance.
+     *
+     * @param {object} nodeEntry
+     * @param {object} state
+     * @returns {void}
+     */
+    function refreshWorkspaceDocumentUiState(nodeEntry, state) {
+      const ui = nodeEntry.documentUi;
+      if (!ui) return;
+      if (ui.badgeEl) {
+        const modeLabel = state.document?.mode === 'pdf'
+          ? 'PDF'
+          : state.document?.mode === 'tex'
+            ? 'TeX'
+            : state.document?.mode === 'markdown'
+              ? 'Markdown'
+              : state.document?.mode === 'code'
+                ? 'Code'
+                : 'Text';
+        ui.badgeEl.textContent = state.dirty ? `${modeLabel} • dirty` : modeLabel;
+        ui.badgeEl.classList.toggle('dirty', !!state.dirty);
+      }
+      if (ui.statusEl) {
+        ui.statusEl.textContent = state.error || state.statusMessage || '';
+        ui.statusEl.classList.toggle('error', !!state.error);
+      }
+      if (ui.saveBtn) {
+        ui.saveBtn.disabled = !state.document || !state.document.isEditable || !state.dirty || state.saving || state.loading;
+      }
+      if (ui.compileBtn) {
+        ui.compileBtn.disabled = state.loading || state.saving || state.compiling;
+      }
     }
 
     /**
@@ -1480,7 +2161,7 @@
         if (entry.kind === 'directory') {
           toggleWorkspaceTreeDirectory(nodeEntry, state, entry.relativePath);
         } else {
-          openWorkspaceTreeContextMenu(nodeEntry, state, entry.relativePath, event);
+          void runWorkspaceTreeOpenEntry(nodeEntry, state, entry.relativePath);
         }
       });
 
@@ -1725,6 +2406,32 @@
     }
 
     /**
+     * Open one file entry from the workspace tree.
+     *
+     * @param {object} nodeEntry
+     * @param {object} state
+     * @param {string} relativePath
+     * @returns {Promise<void>}
+     */
+    async function runWorkspaceTreeOpenEntry(nodeEntry, state, relativePath) {
+      const normalizedPath = normalizeWorkspaceRelativePath(relativePath);
+      if (!normalizedPath) return;
+
+      try {
+        await window.sessionsAPI.openWorkspaceEntry({
+          cwd: state.cwd,
+          relativePath: normalizedPath,
+        });
+        state.lastMessage = `Opened ${normalizedPath}`;
+        state.lastError = '';
+      } catch (error) {
+        state.lastError = error?.message || String(error);
+      }
+
+      updateWorkspaceTreeFooter(nodeEntry, state);
+    }
+
+    /**
      * Rename one entry through the host API.
      *
      * @param {object} nodeEntry
@@ -1823,6 +2530,203 @@
       renderWorkspaceTreePanel(nodeEntry, state.workspaceKey, state.cwd);
       await syncWorkspaceTreeClipboardState(nodeEntry, state);
       await loadWorkspaceTreeDirectory(nodeEntry, state, '');
+    }
+
+    /**
+     * Close the current workbench document for one workspace.
+     *
+     * @param {object} state
+     * @param {string} [message]
+     * @returns {void}
+     */
+    function closeWorkspaceDocument(state, message = '') {
+      state.activeRelativePath = '';
+      state.document = null;
+      state.draftContent = '';
+      state.lastSavedContent = '';
+      state.dirty = false;
+      state.loading = false;
+      state.saving = false;
+      state.compiling = false;
+      state.error = '';
+      state.statusMessage = message;
+      state.previewMode = 'edit';
+      state.pdfView = {
+        page: 1,
+        pageCount: null,
+        zoom: 100,
+      };
+      state.texCompileResult = null;
+    }
+
+    /**
+     * Persist the current editable document when needed.
+     *
+     * @param {object} nodeEntry
+     * @param {object} state
+     * @returns {Promise<boolean>}
+     */
+    async function saveWorkspaceDocument(nodeEntry, state) {
+      if (!state.document?.isEditable || !state.activeRelativePath) return false;
+      if (!state.dirty && !state.saving) return true;
+
+      state.saving = true;
+      state.error = '';
+      state.statusMessage = `Saving ${state.activeRelativePath}...`;
+      refreshWorkspaceDocumentUiState(nodeEntry, state);
+
+      try {
+        const result = await window.sessionsAPI.writeWorkspaceDocument({
+          cwd: state.cwd,
+          relativePath: state.activeRelativePath,
+          content: state.draftContent,
+        });
+        state.lastSavedContent = state.draftContent;
+        state.dirty = false;
+        state.saving = false;
+        state.document = {
+          ...state.document,
+          updatedAt: result?.updatedAt || Date.now(),
+          size: result?.size ?? state.document.size,
+          content: state.draftContent,
+        };
+        state.statusMessage = `Saved ${state.activeRelativePath}`;
+        state.error = '';
+        renderWorkspaceDocumentPanel(nodeEntry, state.workspaceKey, state.cwd);
+        return true;
+      } catch (error) {
+        state.saving = false;
+        state.error = error?.message || String(error);
+        refreshWorkspaceDocumentUiState(nodeEntry, state);
+        return false;
+      }
+    }
+
+    /**
+     * Build the iframe URL for PDF-like previews.
+     *
+     * @param {string} fileUrl
+     * @param {{ page: number, zoom: number }} pdfView
+     * @returns {string}
+     */
+    function buildWorkspacePdfViewerUrl(fileUrl, pdfView) {
+      const page = Math.max(1, Number(pdfView?.page || 1));
+      const zoom = Math.max(50, Math.min(250, Number(pdfView?.zoom || 100)));
+      return `${fileUrl}#page=${page}&zoom=${zoom}`;
+    }
+
+    /**
+     * Open one file inside the embedded workbench.
+     *
+     * @param {object} nodeEntry
+     * @param {object} state
+     * @param {string} relativePath
+     * @param {{ force?: boolean }} [options]
+     * @returns {Promise<void>}
+     */
+    async function openWorkspaceDocument(nodeEntry, state, relativePath, options = {}) {
+      const normalizedPath = normalizeWorkspaceRelativePath(relativePath);
+      if (!normalizedPath) return;
+      if (state.activeRelativePath === normalizedPath && state.document && !options.force) return;
+
+      if (state.dirty && state.activeRelativePath && state.activeRelativePath !== normalizedPath) {
+        const confirmed = window.confirm(`Discard unsaved changes in "${state.activeRelativePath}"?`);
+        if (!confirmed) return;
+      }
+
+      state.loading = true;
+      state.saving = false;
+      state.compiling = false;
+      state.error = '';
+      state.statusMessage = `Opening ${normalizedPath}...`;
+      state.activeRelativePath = normalizedPath;
+      renderWorkspaceDocumentPanel(nodeEntry, state.workspaceKey, state.cwd);
+
+      try {
+        const documentPayload = await window.sessionsAPI.readWorkspaceDocument({
+          cwd: state.cwd,
+          relativePath: normalizedPath,
+        });
+        state.document = documentPayload;
+        state.activeRelativePath = documentPayload.relativePath;
+        state.draftContent = documentPayload.content || '';
+        state.lastSavedContent = state.draftContent;
+        state.dirty = false;
+        state.loading = false;
+        state.previewMode = documentPayload.mode === 'pdf' ? 'pdf' : 'edit';
+        state.pdfView = {
+          page: 1,
+          pageCount: documentPayload.pdf?.pageCount || null,
+          zoom: 100,
+        };
+        state.texCompileResult = null;
+        state.statusMessage = `Opened ${documentPayload.relativePath}`;
+        state.error = '';
+      } catch (error) {
+        closeWorkspaceDocument(state, '');
+        state.error = error?.message || String(error);
+      }
+
+      renderWorkspaceDocumentPanel(nodeEntry, state.workspaceKey, state.cwd);
+    }
+
+    /**
+     * Update the draft content and workbench chrome from one textarea input event.
+     *
+     * @param {object} nodeEntry
+     * @param {object} state
+     * @param {HTMLTextAreaElement} textarea
+     * @param {HTMLElement | null} gutterEl
+     * @returns {void}
+     */
+    function handleWorkspaceEditorInput(nodeEntry, state, textarea, gutterEl) {
+      state.draftContent = textarea.value;
+      state.dirty = state.draftContent !== state.lastSavedContent;
+      if (state.document) {
+        state.document.content = state.draftContent;
+      }
+      syncWorkspaceEditorGutter(gutterEl, state.draftContent);
+      refreshWorkspaceDocumentUiState(nodeEntry, state);
+    }
+
+    /**
+     * Compile the active TeX document and switch to the generated PDF preview.
+     *
+     * @param {object} nodeEntry
+     * @param {object} state
+     * @returns {Promise<void>}
+     */
+    async function compileWorkspaceDocument(nodeEntry, state) {
+      if (state.document?.mode !== 'tex' || !state.activeRelativePath) return;
+      const saved = await saveWorkspaceDocument(nodeEntry, state);
+      if (!saved) return;
+
+      state.compiling = true;
+      state.error = '';
+      state.statusMessage = `Compiling ${state.activeRelativePath}...`;
+      renderWorkspaceDocumentPanel(nodeEntry, state.workspaceKey, state.cwd);
+
+      try {
+        const result = await window.sessionsAPI.compileWorkspaceTexDocument({
+          cwd: state.cwd,
+          relativePath: state.activeRelativePath,
+        });
+        state.compiling = false;
+        state.texCompileResult = result;
+        state.previewMode = 'preview';
+        state.pdfView = {
+          page: 1,
+          pageCount: result?.pageCount || null,
+          zoom: 100,
+        };
+        state.statusMessage = `Compiled ${result?.outputRelativePath || state.activeRelativePath}`;
+        state.error = '';
+      } catch (error) {
+        state.compiling = false;
+        state.error = error?.message || String(error);
+      }
+
+      renderWorkspaceDocumentPanel(nodeEntry, state.workspaceKey, state.cwd);
     }
 
     /**

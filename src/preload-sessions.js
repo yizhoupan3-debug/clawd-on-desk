@@ -58,6 +58,7 @@ contextBridge.exposeInMainWorld("sessionsAPI", {
   getWorkspaceClipboard: () => invokeWorkspaceTree("workspace-tree:clipboard:get"),
   pasteWorkspaceClipboard: (options) => invokeWorkspaceTree("workspace-tree:clipboard:paste", options),
   copyWorkspacePath: (options) => invokeWorkspaceTree("workspace-tree:path:copy", options),
+  openWorkspaceEntry: (options) => invokeWorkspaceTree("workspace-tree:open", options),
   copyWorkspaceRelativePath: (options) => invokeWorkspaceTree("workspace-tree:path:copy", { ...options, format: "relative" }),
   copyWorkspaceAbsolutePath: (options) => invokeWorkspaceTree("workspace-tree:path:copy", { ...options, format: "absolute" }),
   cutWorkspaceEntry: (options) => invokeWorkspaceTree("workspace-tree:clipboard:set", { ...options, mode: "cut" }),
