@@ -1,6 +1,17 @@
 const { contextBridge, ipcRenderer } = require("electron");
 const { formatCompactRelativeTime } = require("./relative-time");
 
+/**
+ * Invoke a workspace-tree IPC channel from the renderer bridge.
+ *
+ * @param {string} channel - IPC channel name.
+ * @param {object} [options] - Payload forwarded to the main process.
+ * @returns {Promise<any>} IPC result payload.
+ */
+function invokeWorkspaceTree(channel, options) {
+  return ipcRenderer.invoke(channel, options);
+}
+
 contextBridge.exposeInMainWorld("sessionsAPI", {
   onSessionsUpdate: (cb) => ipcRenderer.on("sessions-update", (_, sessions) => cb(sessions)),
   closeWorkspace: (cwd) => ipcRenderer.send("close-workspace", cwd),
@@ -9,12 +20,16 @@ contextBridge.exposeInMainWorld("sessionsAPI", {
   closeThread: (sessionId) => ipcRenderer.send("close-thread", sessionId),
   hideSessions: () => ipcRenderer.send("hide-sessions"),
   formatRelativeTime: (value) => formatCompactRelativeTime(value),
-  listWorkspaceEntries: (options) => ipcRenderer.invoke("workspace-tree:list", options),
-  createWorkspaceEntry: (options) => ipcRenderer.invoke("workspace-tree:create", options),
-  renameWorkspaceEntry: (options) => ipcRenderer.invoke("workspace-tree:rename", options),
-  deleteWorkspaceEntry: (options) => ipcRenderer.invoke("workspace-tree:delete", options),
-  setWorkspaceClipboard: (options) => ipcRenderer.invoke("workspace-tree:clipboard:set", options),
-  getWorkspaceClipboard: () => ipcRenderer.invoke("workspace-tree:clipboard:get"),
-  pasteWorkspaceClipboard: (options) => ipcRenderer.invoke("workspace-tree:clipboard:paste", options),
-  copyWorkspacePath: (options) => ipcRenderer.invoke("workspace-tree:path:copy", options),
+  listWorkspaceEntries: (options) => invokeWorkspaceTree("workspace-tree:list", options),
+  createWorkspaceEntry: (options) => invokeWorkspaceTree("workspace-tree:create", options),
+  renameWorkspaceEntry: (options) => invokeWorkspaceTree("workspace-tree:rename", options),
+  deleteWorkspaceEntry: (options) => invokeWorkspaceTree("workspace-tree:delete", options),
+  setWorkspaceClipboard: (options) => invokeWorkspaceTree("workspace-tree:clipboard:set", options),
+  getWorkspaceClipboard: () => invokeWorkspaceTree("workspace-tree:clipboard:get"),
+  pasteWorkspaceClipboard: (options) => invokeWorkspaceTree("workspace-tree:clipboard:paste", options),
+  copyWorkspacePath: (options) => invokeWorkspaceTree("workspace-tree:path:copy", options),
+  copyWorkspaceRelativePath: (options) => invokeWorkspaceTree("workspace-tree:path:copy", { ...options, format: "relative" }),
+  copyWorkspaceAbsolutePath: (options) => invokeWorkspaceTree("workspace-tree:path:copy", { ...options, format: "absolute" }),
+  cutWorkspaceEntry: (options) => invokeWorkspaceTree("workspace-tree:clipboard:set", { ...options, mode: "cut" }),
+  copyWorkspaceEntry: (options) => invokeWorkspaceTree("workspace-tree:clipboard:set", { ...options, mode: "copy" }),
 });
